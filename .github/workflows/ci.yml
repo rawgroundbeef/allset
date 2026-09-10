@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Formatting
+        run: test -z "$(gofmt -l cmd internal)"
+      - name: Race tests and Python runtime tests
+        run: go test -race ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Build and inspect the CLI
+        run: |
+          go build -trimpath -o bin/allset ./cmd/allset
+          bin/allset --version
+          bin/allset --help
+          bin/allset config schema --project | python3 -m json.tool > /dev/null
+          bin/allset config schema | python3 -m json.tool > /dev/null
+          bin/allset backends --json | python3 -m json.tool > /dev/null

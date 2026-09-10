@@ -1,0 +1,15 @@
+name: Idea or missing integration
+description: Describe a workflow AllSet should support.
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: What are you trying to do?
+      description: Describe the project workflow and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested behavior
+      description: Include provider or tool documentation if relevant. Do not include credentials.

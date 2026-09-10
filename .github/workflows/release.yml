@@ -1,0 +1,55 @@
+name: Native release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  publish:
+    needs: checks
+    if: github.repository == 'rawgroundbeef/allset'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Verify release revision
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          test "$GITHUB_REF_NAME" = "v$(go run ./cmd/allset --version | cut -d ' ' -f 2)"
+      - name: Build native archives and checksums
+        run: python3 scripts/build-release.py dist/release
+      - name: Keep build output if publication fails
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-release
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish the checked tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          args=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/release/* --verify-tag --title "AllSet $GITHUB_REF_NAME" --generate-notes "${args[@]}"

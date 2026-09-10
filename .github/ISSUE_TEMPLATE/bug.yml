@@ -1,0 +1,27 @@
+name: Bug report
+description: Report a command that failed or behaved unexpectedly.
+body:
+  - type: markdown
+    attributes:
+      value: Keep credentials, private account data, and full environment dumps out of reports. Use SECURITY.md for vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: AllSet version and operating system
+      placeholder: allset --version; macOS or Linux and architecture
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: What did you run?
+      description: Include the command, provider, and minimal redacted config when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+      description: Include the stage that failed and redacted error text.
+    validations:
+      required: true

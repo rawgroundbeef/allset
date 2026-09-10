@@ -1,0 +1,249 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "name",
+    "repository",
+    "backend"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "enum": [
+        "allset.schema.json",
+        "./allset.schema.json"
+      ]
+    },
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "$ref": "#/$defs/identifier",
+      "description": "Stable project identity; does not select credentials by itself."
+    },
+    "aliases": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/identifier"
+      }
+    },
+    "repository": {
+      "type": "string",
+      "minLength": 1,
+      "description": "owner/repo, Git SSH address, or HTTPS URL without credentials. Must match the installed profile. The CLI validates address syntax and inference uniqueness."
+    },
+    "backend": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "not": {
+        "const": "box-herdr"
+      },
+      "description": "Compute service identifier, such as box. Use allset backends to list installed strategies; unsupported services never fall back to Box."
+    },
+    "mcps": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/mcp"
+      },
+      "description": "Project-owned native MCP servers. Credentials use native login or remote environment references; never inline values. Omit to leave MCPs unmanaged, set {} to remove managed entries."
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+      "not": {
+        "enum": [
+          "help",
+          "version",
+          "projects",
+          "config",
+          "open",
+          "resume",
+          "connect",
+          "status",
+          "doctor",
+          "login",
+          "stop",
+          "collect",
+          "backends",
+          "init",
+          "mcp"
+        ]
+      }
+    },
+    "mcp": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preset": {
+          "const": "trigger"
+        },
+        "project_ref": {
+          "type": "string",
+          "pattern": "^proj_[a-zA-Z0-9]+$"
+        },
+        "read_only": {
+          "type": "boolean",
+          "default": true
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "url": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "env_vars": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]*$"
+          }
+        },
+        "bearer_token_env_var": {
+          "type": "string",
+          "pattern": "^[A-Z_][A-Z0-9_]*$"
+        },
+        "agents": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "codex",
+              "claude",
+              "cursor"
+            ]
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "preset",
+            "project_ref"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "required": [
+                  "args"
+                ]
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "required": [
+                  "env_vars"
+                ]
+              },
+              {
+                "required": [
+                  "bearer_token_env_var"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "command"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "preset"
+                ]
+              },
+              {
+                "required": [
+                  "project_ref"
+                ]
+              },
+              {
+                "required": [
+                  "read_only"
+                ]
+              },
+              {
+                "required": [
+                  "url"
+                ]
+              },
+              {
+                "required": [
+                  "bearer_token_env_var"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "required": [
+            "url"
+          ],
+          "not": {
+            "anyOf": [
+              {
+                "required": [
+                  "preset"
+                ]
+              },
+              {
+                "required": [
+                  "project_ref"
+                ]
+              },
+              {
+                "required": [
+                  "read_only"
+                ]
+              },
+              {
+                "required": [
+                  "command"
+                ]
+              },
+              {
+                "required": [
+                  "args"
+                ]
+              },
+              {
+                "required": [
+                  "env_vars"
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AllSet project config v1",
+  "description": "Repository-owned entry point. Accounts and existing provider setup are bound locally. Terminal choice is not a project setting."
+}
