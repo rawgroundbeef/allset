@@ -25,13 +25,16 @@ Local verification on macOS arm64:
 - Local review covered naming/identity, managed-file ownership, publication authority,
   resource behavior, and test gaps. This was a self-review, not an independent agent review.
 
-The first public CI run is still pending.
+The public repository is live. The first [CI run](https://github.com/rawgroundbeef/allset/actions/runs/34438370846)
+passed on both GitHub-hosted Linux and macOS runners for initial commit `6cbfb8b`.
+Private vulnerability reporting is enabled. The tag release workflow is present
+but has not been exercised by publishing a release; npm packaging remains pending.
 Remote provisioning, agent persistence, browser login/previews, and multi-agent
 isolation were not tested by this source preparation work.
 
 ## Blockers and next action
 
-- Publish the selected source snapshot and verify the first public CI run.
+- Extract standalone provider preparation and implement/test npm distribution.
 - npm publication is pending packaging and supported maintainer sign-in.
 - Extract the prototype controller before claiming standalone onboarding.
 - See [.planning/0001-public-alpha/follow-ups.md](.planning/0001-public-alpha/follow-ups.md)
