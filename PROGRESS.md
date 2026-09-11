@@ -2,6 +2,22 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- **Local first-run reset, user-authorized:** superseded the sign-in-only replay
+  below by archiving the `hello-world` test checkout's `.allset`, private project
+  profile/journal and machine/shell pointers, project credential caches, exclusive
+  agent binding, and its two owned local task records. Original bytes and file
+  modes were verified after the move into a private backup under
+  `~/.local/share/box-herdr/onboarding-backups/hello-world-20260911-qstslbe8`, with
+  restoration notes. Locks were held during the move; no AllSet session was
+  running, and no other project shared the binding. No provider or SSH operation
+  ran; the existing Box and remote files remain untouched. The user was told that
+  a new first run no longer automatically reuses that Box and will request
+  confirmation before creating another environment.
+  **Interactive local verification:** the rebuilt binary displayed “Choose your
+  coding agents” with Codex, Claude Code, and Cursor in a real PTY. Cancelled at
+  that picker; no manifest/private setup was recreated, and auth/environment
+  creation was not reached. **Next:** user repeats the same local command for
+  feedback from the beginning. No implementation changed in this reset.
 - **Local private-state maintenance, user-authorized:** prepared the existing
   `hello-world` fixture to replay all three native sign-ins. Under its onboarding
   and project operation locks, set only the three project credential caches'
