@@ -10,6 +10,7 @@ import uuid
 
 import agent_auth
 import github_auth
+import progress
 import repository_access
 from profiles import credential, identifier, validate
 
@@ -170,10 +171,11 @@ def ensure_profile(controller, request):
         binding = agent_auth.config(controller, existing) or {}
         pending = []
         for client in existing.get('clients') or []:
-            path = agent_auth.cache_path(controller, existing, client)
-            cached = agent_auth.read_private(path) if path.exists() else {}
+            cached = agent_auth.cached_login(controller, existing, binding, client)
             selected = binding.get('providers', {}).get(client, {})
-            if (not selected.get('account_email') or cached.get('needs_login')
+            if cached.get('onboarding_skipped') and cached.get('needs_login'):
+                continue
+            if (not selected.get('account_email') or cached.get('needs_login') or cached.get('logged_out')
                     or not agent_auth.has_login(client, cached.get('contents'))):
                 pending.append(client)
         return existing, pending
@@ -198,7 +200,12 @@ def ensure_profile(controller, request):
     print('Next: prepare Box, then open browser sign-in for ' + selected_clients + '.', flush=True)
 
     github = journal.get('github') if journal else None
-    if not journal and not _public_repository(project['repository']):
+    public = True
+    if not journal:
+        with progress.Progress(summary=None):
+            progress.stage('repository-access', 'Checking repository access')
+            public = _public_repository(project['repository'])
+    if not public:
         github_login = input("GitHub account (public access wasn't verified): ").strip()
         if not github_login:
             raise ValueError('Repository setup requires a GitHub account when public access is not verified')
@@ -233,7 +240,9 @@ def ensure_profile(controller, request):
     os.environ['BOX_ORG'] = scope
     try:
         try:
-            status = controller.box('status', *scope_args)
+            with progress.Progress(summary=None):
+                progress.stage('box-account', 'Checking your Box account')
+                status = controller.box('status', *scope_args)
         except Exception:
             raise ValueError('Box sign-in could not be verified for the selected billing scope') from None
     except Exception:
@@ -244,8 +253,10 @@ def ensure_profile(controller, request):
     account_identity = _account_identity(status)
     if journal and journal.get('account_identity') != account_identity:
         raise ValueError('Active Box account does not match the interrupted onboarding journal')
-    limits = controller.box('limits', *scope_args)
-    controller.check_allowance(limits, 60, reserved_seconds=0)
+    with progress.Progress(summary=None):
+        progress.stage('box-allowance', 'Checking Box allowance')
+        limits = controller.box('limits', *scope_args)
+        controller.check_allowance(limits, 60, reserved_seconds=0)
     print('Box', flush=True)
     print('  Account  ' + (account_identity.get('email') or account_identity['id']), flush=True)
     print('  Billing  ' + scope, flush=True)
@@ -281,6 +292,19 @@ def ensure_profile(controller, request):
                    'infisical': infisical, 'environment_create_attempted': False,
                    'stage': 'environment-intent'}
         _atomic(journal_path, journal)
+    with progress.Progress(summary=None):
+        progress.stage('box-environment', 'Preparing Box environment')
+        _prepare_environment(controller, journal, journal_path, scope_args)
+
+    _atomic(agent_path, agent_profile)
+    _atomic(target, profile)
+    journal['stage'] = 'profile-saved'; _atomic(journal_path, journal)
+    return profile, sorted(providers)
+
+
+def _prepare_environment(controller, journal, journal_path, scope_args):
+    """Reconcile the recorded environment intent before changing provider state."""
+    environment = journal['environment']
     if journal['stage'] == 'environment-intent':
         listing = controller.box('env', 'list', *scope_args)
         exists = _has_environment(listing, environment)
@@ -311,7 +335,57 @@ def ensure_profile(controller, request):
         if not _environment_is_safe(controller.box('env', 'list', *scope_args), environment):
             raise RuntimeError('Recorded Box environment is no longer verified as safe; no compute mutation started')
 
-    _atomic(agent_path, agent_profile)
-    _atomic(target, profile)
-    journal['stage'] = 'profile-saved'; _atomic(journal_path, journal)
-    return profile, sorted(providers)
+
+def authenticate_clients(controller, owner, profile, pending):
+    """Finish or explicitly skip every selected sign-in before the shell handoff.
+
+    The caller holds the project operation lock so an attached monitor cannot
+    capture a partial login while the user is choosing retry/skip/quit.
+    """
+    selected = [client for client in agent_auth.CLIENT_LABELS if client in profile.get('clients', [])]
+    if set(pending) - set(selected):
+        raise ValueError('Pending sign-in includes an unselected coding client')
+    skipped = set()
+    for index, client in enumerate(selected, 1):
+        label = agent_auth.CLIENT_LABELS[client]
+        if client not in pending:
+            binding = agent_auth.config(controller, profile) or {}
+            cached = agent_auth.cached_login(controller, profile, binding, client)
+            if cached.get('onboarding_skipped') and cached.get('needs_login'):
+                skipped.add(client)
+                print('  – ' + label + ' skipped · sign in later: allset config ' + client, flush=True)
+                continue
+            email = binding['providers'][client].get('account_email')
+            if (not email or cached.get('needs_login') or cached.get('logged_out')
+                    or not agent_auth.has_login(client, cached.get('contents'))):
+                raise ValueError('Saved ' + label + ' sign-in is incomplete; retry onboarding')
+            print('  ✓ ' + label + ' · ' + progress.clean(email) + ' · saved login', flush=True)
+            continue
+        while True:
+            print('\n' + str(index) + '/' + str(len(selected)) + ' · Authenticating ' + label, flush=True)
+            print('Ctrl+C to retry, skip, or quit.', flush=True)
+            try:
+                result = agent_auth.login(controller, owner, profile, client, guided=True)
+                if result == 0:
+                    break
+                message = label + ' sign-in did not finish.'
+            except KeyboardInterrupt:
+                message = label + ' sign-in interrupted.'
+            except RuntimeError as error:
+                message = progress.clean(error)
+            except (OSError, subprocess.SubprocessError):
+                message = label + ' sign-in could not finish. Check your connection and try again.'
+            print('\n  ! ' + message, flush=True)
+            while True:
+                choice = input('Retry / skip / quit [retry]: ').strip().lower()
+                if choice in ('', 'r', 'retry', 's', 'skip', 'q', 'quit'):
+                    break
+                print('Enter retry, skip, or quit.', flush=True)
+            if choice in ('q', 'quit'):
+                raise RuntimeError('Setup paused. Completed sign-ins are saved; run allset to continue.')
+            if choice in ('s', 'skip'):
+                agent_auth.skip_login(controller, profile, client)
+                skipped.add(client)
+                print('  – ' + label + ' skipped · sign in later: allset config ' + client, flush=True)
+                break
+    return skipped

@@ -31,6 +31,202 @@ c = projects.c
 
 
 class RuntimeTests(unittest.TestCase):
+    def auth_fixture(self, root, clients):
+        controller = types.SimpleNamespace(STATE=root)
+        profile = {'name': 'dashboard', 'repository': 'acme/dashboard',
+                   'agent_profile': 'work', 'clients': clients}
+        agent_auth.private_write(root / 'projects/dashboard/profile.json', profile)
+        agent_auth.private_write(root / 'agent-profiles/work/profile.json', {
+            'version': 1, 'name': 'work', 'providers': {client: {} for client in clients}})
+        return controller, profile, {'project': 'dashboard', 'ssh_alias': 'box-dashboard'}
+
+    def test_guided_login_selected_subsets_verify_and_save_before_advancing(self):
+        credentials = {'codex': {'tokens': {'access_token': 'synthetic-codex'}},
+                       'claude': {'claudeAiOauth': {'accessToken': 'synthetic-claude'}},
+                       'cursor': {'accessToken': 'synthetic-cursor'}}
+        for clients in (['cursor'], ['claude', 'codex'], ['cursor', 'claude', 'codex']):
+            with self.subTest(clients=clients), tempfile.TemporaryDirectory() as tmp:
+                controller, profile, owner = self.auth_fixture(Path(tmp), clients)
+                expected = [client for client in ('codex', 'claude', 'cursor') if client in clients]
+                events = []
+                def native(args, title):
+                    client = expected[len(events) // 3]
+                    events.append(('login', client))
+                    self.assertFalse(progress.active())
+                    self.assertEqual(args[-1], __import__('shlex').join(agent_auth.login_command(client)))
+                    if client == 'codex':
+                        self.assertIn('127.0.0.1:1455:127.0.0.1:1455', args)
+                    for previous in expected[:expected.index(client)]:
+                        saved = agent_auth.read_private(agent_auth.cache_path(controller, profile, previous))
+                        self.assertFalse(saved['needs_login'])
+                        self.assertTrue(agent_auth.has_login(previous, saved['contents']))
+                    print('https://signin.example.test/' + client)
+                    return 0
+                def identity(_controller, _owner, client):
+                    self.assertTrue(progress.active())
+                    events.append(('verify', client))
+                    return {'logged_in': True, 'email': client + '@example.test'}
+                def exchange(_controller, _owner, request):
+                    client, = request['files']
+                    events.append(('save', client))
+                    return {client: credentials[client]}
+                output = io.StringIO()
+                with patch.object(progress, 'native_handoff', side_effect=native), \
+                     patch.object(agent_auth, 'native_identity', side_effect=identity), \
+                     patch.object(agent_auth, 'exchange', side_effect=exchange), \
+                     patch('builtins.input', side_effect=AssertionError('successful flow prompted')), \
+                     contextlib.redirect_stdout(output):
+                    self.assertEqual(onboarding.authenticate_clients(controller, owner, profile, clients), set())
+                self.assertEqual(events, [(phase, client) for client in expected for phase in ('login', 'verify', 'save')])
+                text = output.getvalue()
+                for index, client in enumerate(expected, 1):
+                    self.assertIn(f'{index}/{len(expected)} · Authenticating ' + agent_auth.CLIENT_LABELS[client], text)
+                    self.assertIn('✓ ' + agent_auth.CLIENT_LABELS[client] + ' · ' + client + '@example.test', text)
+                self.assertNotIn('synthetic-', text)
+                self.assertNotIn('Workspace prepared', text)
+                self.assertFalse(progress.active())
+
+    def test_guided_login_retry_skip_and_resume_preserve_completed_accounts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller, profile, owner = self.auth_fixture(Path(tmp), ['cursor', 'claude', 'codex'])
+            attempts = []
+            def native(_controller, _owner, _profile, client, *, guided):
+                self.assertTrue(guided)
+                attempts.append(client)
+                if client == 'codex':
+                    if attempts.count(client) == 1:
+                        raise KeyboardInterrupt()
+                    binding = agent_auth.config(controller, profile)
+                    agent_auth.bind_verified_identity(controller, binding, client, 'fixture@example.test')
+                    agent_auth.private_write(agent_auth.cache_path(controller, profile, client), {
+                        'project': 'dashboard', 'profile': 'work', 'provider': client,
+                        'contents': {'tokens': {'access_token': 'synthetic-access'}}})
+                    return 0
+                if client == 'claude':
+                    raise RuntimeError('Could not verify the signed-in account; login was not cached.')
+                return 9
+            with patch.object(agent_auth, 'login', side_effect=native), \
+                 patch('builtins.input', side_effect=['invalid', '', 's', 'skip']), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(onboarding.authenticate_clients(controller, owner, profile, profile['clients']),
+                                 {'claude', 'cursor'})
+            self.assertEqual(attempts, ['codex', 'codex', 'claude', 'cursor'])
+            self.assertNotIn('✓ Claude', output.getvalue())
+            self.assertIn('allset config claude', output.getvalue())
+            for client in ('claude', 'cursor'):
+                saved = agent_auth.read_private(agent_auth.cache_path(controller, profile, client))
+                self.assertTrue(saved['needs_login'] and saved['onboarding_skipped'])
+            before = agent_auth.cache_path(controller, profile, 'codex').read_bytes()
+            with patch.object(onboarding, 'validate', side_effect=lambda value: value), \
+                 patch.object(agent_auth, 'login', side_effect=AssertionError('repeated finished/skipped login')), \
+                 contextlib.redirect_stdout(io.StringIO()) as output:
+                saved_profile, pending = onboarding.ensure_profile(controller, {'project': {
+                    'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'}})
+                self.assertEqual(pending, [])
+                self.assertEqual(onboarding.authenticate_clients(controller, owner, saved_profile, pending),
+                                 {'claude', 'cursor'})
+            self.assertIn('Codex · fixture@example.test · saved login', output.getvalue())
+            self.assertEqual(agent_auth.cache_path(controller, profile, 'codex').read_bytes(), before)
+
+    def test_guided_login_quit_eof_and_corrupt_state_never_advance(self):
+        for failure, answer in ((KeyboardInterrupt(), 'q'), (RuntimeError('offline'), EOFError()),
+                                (RuntimeError('offline'), KeyboardInterrupt()), (ValueError('foreign cache'), 'skip')):
+            with self.subTest(failure=failure, answer=answer), tempfile.TemporaryDirectory() as tmp:
+                controller, profile, owner = self.auth_fixture(Path(tmp), ['codex', 'claude'])
+                with patch.object(agent_auth, 'login', side_effect=failure) as login, \
+                     patch('builtins.input', side_effect=[answer]) as prompt, \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    with self.assertRaises((RuntimeError, EOFError, KeyboardInterrupt, ValueError)):
+                        onboarding.authenticate_clients(controller, owner, profile, profile['clients'])
+                self.assertEqual(login.call_count, 1)
+                if isinstance(failure, ValueError):
+                    prompt.assert_not_called()
+                self.assertFalse(agent_auth.cache_path(controller, profile, 'claude').exists())
+
+    def test_skipped_login_is_not_restored_or_captured_and_explicit_repair_clears_skip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller, profile, owner = self.auth_fixture(Path(tmp), ['cursor'])
+            agent_auth.skip_login(controller, profile, 'cursor')
+            with patch.object(agent_auth, 'exchange') as exchange:
+                agent_auth.restore(controller, owner, profile)
+                agent_auth.capture(controller, owner, profile, ['cursor'])
+                exchange.assert_not_called()
+            with patch.object(agent_auth.subprocess, 'call', return_value=0), \
+                 patch.object(agent_auth, 'native_identity', return_value={'logged_in': True, 'email': 'fixture@example.test'}), \
+                 patch.object(agent_auth, 'exchange', return_value={'cursor': {'accessToken': 'synthetic-access'}}), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(agent_auth.login(controller, owner, profile, 'cursor'), 0)
+            saved = agent_auth.read_private(agent_auth.cache_path(controller, profile, 'cursor'))
+            self.assertFalse(saved['needs_login'])
+            self.assertNotIn('onboarding_skipped', saved)
+
+    def test_foreign_skip_cache_cannot_be_adopted_or_rewritten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller, profile, owner = self.auth_fixture(Path(tmp), ['codex'])
+            path = agent_auth.cache_path(controller, profile, 'codex')
+            agent_auth.private_write(path, {'project': 'another', 'profile': 'work', 'provider': 'codex',
+                                            'needs_login': True, 'onboarding_skipped': True})
+            before = path.read_bytes()
+            with self.assertRaisesRegex(ValueError, 'different project'):
+                agent_auth.skip_login(controller, profile, 'codex')
+            with patch.object(onboarding, 'validate', side_effect=lambda value: value):
+                with self.assertRaisesRegex(ValueError, 'different project'):
+                    onboarding.ensure_profile(controller, {'project': {
+                        'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'}})
+            self.assertEqual(path.read_bytes(), before)
+
+    def test_native_handoff_real_tty_keeps_stdin_and_stops_animation_before_link(self):
+        master, slave = pty.openpty()
+        child = None
+        try:
+            native = "import time,sys;time.sleep(.35);print('https://signin.example.test/',flush=True);assert input()=='continue';print('NATIVE-DONE',flush=True)"
+            script = ("import sys;sys.path.insert(0,sys.argv[1]);import progress;"
+                      "result=progress.native_handoff([sys.executable,'-c',sys.argv[2]],'Opening Codex sign-in');"
+                      "assert result==0 and not progress.active();print('AUTH-VERIFIED')")
+            child = subprocess.Popen([sys.executable, '-c', script, str(Path(progress.__file__).parent), native],
+                                     stdin=slave, stdout=slave, stderr=slave,
+                                     env={**os.environ, 'TERM': 'xterm', 'NO_COLOR': '1'})
+            output = bytearray()
+            replied = False
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if select.select([master], [], [], .1)[0]:
+                    output.extend(os.read(master, 65536))
+                    if b'https://signin.example.test/' in output and not replied:
+                        os.write(master, b'continue\n')
+                        replied = True
+                elif child.poll() is not None:
+                    break
+            else:
+                self.fail('native login lost terminal input or hung')
+            text = output.decode()
+            self.assertEqual(child.wait(), 0, text)
+            before, after = text.split('https://signin.example.test/', 1)
+            self.assertGreaterEqual(before.count('\r\x1b[2K'), 3)
+            self.assertNotIn('\x1b', after)
+            self.assertTrue(text.rstrip().endswith('AUTH-VERIFIED'), text)
+            self.assertNotIn('✓', before, 'native startup claimed authentication success')
+        finally:
+            if child is not None and child.poll() is None:
+                child.kill()
+                child.wait()
+            os.close(master)
+            os.close(slave)
+
+    def test_native_handoff_cancellation_reaps_ssh_and_releases_display(self):
+        child = types.SimpleNamespace(stdout=types.SimpleNamespace(fileno=lambda: 123, close=lambda: None),
+                                      poll=lambda: None)
+        from unittest.mock import Mock
+        child.terminate, child.wait = Mock(), Mock()
+        with patch.object(progress.subprocess, 'Popen', return_value=child), \
+             patch.object(progress.os, 'read', side_effect=KeyboardInterrupt()), \
+             contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(KeyboardInterrupt):
+                progress.native_handoff(['ssh', '-tt', 'fixture'], 'Opening sign-in')
+        child.terminate.assert_called_once()
+        child.wait.assert_called_once_with(timeout=5)
+        self.assertFalse(progress.active())
+
     def test_explicit_project_is_not_reinterpreted_as_native_box_command(self):
         with patch.object(project_shell, 'resolve_project', side_effect=AssertionError('project re-resolved')), \
              patch.object(project_shell, 'shell', return_value=0) as shell:
@@ -352,7 +548,7 @@ class RuntimeTests(unittest.TestCase):
         binding = {'name': 'dashboard', 'infisical': {'instance': 'https://example.test',
             'organization_id': 'org', 'project_id': 'project', 'principal_id': 'principal', 'environment': 'dev'}}
         with tempfile.TemporaryDirectory() as tmp, patch.object(session_context.Path, 'home', return_value=Path(tmp)), \
-             patch.object(session_context.infisical_context, 'token_environment', return_value={'INFISICAL_TOKEN': 'broker'}), \
+             patch.object(infisical_context, 'token_environment', return_value={'INFISICAL_TOKEN': 'broker'}), \
              patch.object(session_context.subprocess, 'run', return_value=types.SimpleNamespace(
                  returncode=0, stdout=json.dumps([{'secretKey': 'TOKEN', 'secretValue': 'selected'},
                                                   {'secretKey': 'OTHER', 'secretValue': 'excluded'}]))) as run:
@@ -570,6 +766,29 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(native.read_bytes(), b'\x00native-client')
             self.assertIn(session_context.MARKER, command.read_text())
             self.assertNotEqual(native, command)
+
+    def test_installed_client_can_repair_auth_from_home_without_loading_project_secrets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); local = root / '.local/bin'; local.mkdir(parents=True)
+            checkout = root / 'checkout'; checkout.mkdir()
+            for client, args in (('codex', ['login']), ('claude', ['auth', 'status']), ('cursor', ['login'])):
+                command = local / session_context.BINARIES[client]
+                command.write_text('#!' + sys.executable + '\nimport os,sys\n'
+                                   'assert "FIXTURE_SECRET" not in os.environ and "INFISICAL_TOKEN" not in os.environ\n'
+                                   'print("NATIVE-AUTH", *sys.argv[1:])\nsys.exit(7)\n')
+                command.chmod(0o700)
+                with patch.object(session_context.Path, 'home', return_value=root):
+                    session_context.install([client], None, 'dashboard', str(checkout), {
+                        'FIXTURE_SECRET': {'secret_path': '/allset', 'secret_key': 'TOKEN'}})
+                # The installed module has no Infisical companions. No import or
+                # secret request is allowed just to authenticate the native client.
+                result = subprocess.run([str(command), *args], cwd=root, capture_output=True, text=True,
+                                        env={**os.environ, 'FIXTURE_SECRET': 'synthetic', 'INFISICAL_TOKEN': 'synthetic'})
+                self.assertEqual(result.returncode, 7, result.stderr)
+                self.assertEqual(result.stdout.strip(), 'NATIVE-AUTH ' + ' '.join(args))
+                conversation = subprocess.run([str(command), 'resume'], cwd=root, capture_output=True, text=True)
+                self.assertEqual(conversation.returncode, 1)
+                self.assertIn('inside its owned project checkout', conversation.stderr)
 
     def test_session_launch_preserves_argv_cwd_and_uses_curated_environment(self):
         with tempfile.TemporaryDirectory() as tmp:

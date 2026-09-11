@@ -60,7 +60,7 @@ def main():
         declaration = payload
     declaration = selected_declaration(declaration, profile)
     checkout = None
-    with progress.Progress():
+    with progress.Progress(summary='Box prepared' if operation == 'onboard' else 'Workspace prepared'):
         if operation == "connect":
             progress.stage("machine", "Checking your running machine")
             with projects.project_lock(name):
@@ -83,7 +83,7 @@ def main():
             progress.note("MCP settings applied for new agent sessions")
         if checkout and (declaration.get("skills") is not None or profile.get("personal_skills")):
             directory = "/home/user/.local/share/allset/skills-runtime"
-            projects.c.write_remote(owner, directory + "/skills.py", Path(__file__).with_name("skills.py").read_text())
+            projects.c.write_remote(owner, directory + "/skills.py", (Path(controller) / "skills.py").read_text())
             personal_sources = {}
             for skill in profile.get("personal_skills") or []:
                 source = Path(skill["path"])
@@ -122,7 +122,8 @@ def main():
                 "import json,sys;sys.path.insert(0,sys.argv[1]);import skills;skills.main(json.loads(sys.argv[2]))",
                 directory, json.dumps(request)]))
             progress.note("Skills applied for new agent sessions")
-        agent_auth.print_accounts(projects.c, profile)
+        if operation != 'onboard':
+            agent_auth.print_accounts(projects.c, profile)
         target = {"host": owner["ssh_alias"]}
         if attach in ("workspace", "ssh", "terminal"):
             record = json.loads((projects.PROJECTS / name / "shell.json").read_text())
@@ -148,13 +149,13 @@ def main():
             progress.stage("workspace", "Finding your persistent terminal")
             pane = project_shell.terminal(owner, profile)
             target.update(terminal_id=pane["terminal_id"], remote_herdr="/home/user/.local/bin/herdr")
-    for client in login_clients:
-        result = agent_auth.login(projects.c, owner, profile, client)
-        if result:
-            raise RuntimeError(client + " sign-in did not complete; retry onboarding or choose another client")
     if operation == "onboard":
+        with projects.project_lock(name):
+            skipped_clients = onboarding.authenticate_clients(projects.c, owner, profile, login_clients)
         for server, mcp in (declaration.get("mcps") or {}).items():
             if mcp.get("preset") != "trigger":
+                continue
+            if set(mcp.get('agents') or profile.get('clients') or []) <= skipped_clients:
                 continue
             request = {"operation": "login", "project": name, "repository": declaration["repository"],
                        "mcps": declaration["mcps"], "server": server}
@@ -166,7 +167,7 @@ def main():
                 continue
             targets = mcp.get("agents") or profile.get("clients") or []
             for client in targets:
-                if client not in profile.get("clients", []):
+                if client not in profile.get("clients", []) or client in skipped_clients:
                     continue
                 argv = {"codex": ["codex", "mcp", "login", server],
                         "claude": ["claude", "mcp", "login", server],
@@ -181,7 +182,7 @@ def main():
         import infisical_context
         directory = "/home/user/.local/share/allset/session-runtime"
         for source in ("session_context.py", "infisical_context.py", "profiles.py"):
-            projects.c.write_remote(owner, directory + "/" + source, Path(__file__).with_name(source).read_text())
+            projects.c.write_remote(owner, directory + "/" + source, (Path(controller) / source).read_text())
         binding = infisical_context.binding(profile) if profile.get("infisical") else None
         request = {"clients": profile.get("clients") or [], "binding": binding, "project": name,
                    "checkout": checkout["cwd"], "environment": declaration.get("session_environment") or {}}

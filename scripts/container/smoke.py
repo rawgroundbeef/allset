@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import signal
 import shutil
 import subprocess
 import tarfile
@@ -49,18 +50,26 @@ def cli(*args, ok=True, contains=None, cwd=None, terminal=False, answers=None):
     return output
 
 
-def cli_tty(*args):
+def cli_tty(*args, cwd=None, interrupt_login=False):
     """Read a real terminal throughout execution, including the final redraw."""
     master, slave = pty.openpty()
     process = None
     output = bytearray()
     try:
-        process = subprocess.Popen(['allset', *args], stdin=slave, stdout=slave, stderr=slave,
-                                   env={**os.environ, 'TERM': 'xterm-256color'})
+        process = subprocess.Popen(['allset', *args], stdin=slave, stdout=slave, stderr=slave, cwd=cwd,
+                                   env={**os.environ, 'TERM': 'xterm-256color',
+                                        'PATH': str(home / '.local/bin') + ':' + os.environ['PATH']})
+        interrupted = skipped = False
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
             if select.select([master], [], [], 0.1)[0]:
                 output.extend(os.read(master, 65536))
+                if interrupt_login and not interrupted and b'https://signin.example.test/codex' in output:
+                    process.send_signal(signal.SIGINT)
+                    interrupted = True
+                if interrupt_login and not skipped and b'Retry / skip / quit [retry]:' in output:
+                    os.write(master, b'skip\n')
+                    skipped = True
             elif process.poll() is not None:
                 break
         else:
@@ -78,7 +87,8 @@ def cli_tty(*args):
 
 
 for target in (home / '.ascii/bin/box', home / 'test-tools/ssh', home / 'test-tools/scp',
-               state / 'bin/herdr', home / '.local/bin/herdr', home / 'test-tools/claude'):
+               state / 'bin/herdr', home / '.local/bin/herdr', home / 'test-tools/claude',
+               home / 'test-tools/codex', home / 'test-tools/cursor-agent', home / 'test-tools/git'):
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile('/opt/checks/transport.py', target)
     target.chmod(0o700)
@@ -219,6 +229,56 @@ with tarfile.open(results / 'untracked.tar.gz') as archive:
 assert subprocess.check_output(['git', '-C', str(checkout), 'ls-files', '--stage']) == before_index
 assert (checkout / 'tracked.txt').read_text() == 'after\n'
 print('PASS: bundled collection recovers tracked/untracked work without changing the index', flush=True)
+
+# Resume an interrupted onboarding profile through the actual packaged entrypoint.
+# Existing VM/checkout fixtures remain owned; no new provider operation is allowed.
+for clients in (['cursor', 'claude', 'codex'], ['codex']):
+    write(project / 'profile.json', {**profile, 'version': 2, 'coding_only': True, 'clients': clients,
+        'provider_binding': {'provider': 'box', 'environment': 'fixture', 'billing_scope': 'personal',
+                             'safe_for_third_parties': True, 'account_identity': {'email': 'fixture@example.test'}}})
+    write(project / 'onboarding.json', {'project': 'dashboard', 'stage': 'profile-saved'})
+    write(state / 'agent-profiles/fixture-account/profile.json', {
+        'name': 'fixture-account', 'providers': {client: {} for client in clients}})
+    for client in clients:
+        write(state / f'credentials/dashboard/agents/{client}.json', {
+            'project': 'dashboard', 'profile': 'fixture-account', 'provider': client, 'needs_login': True})
+    interrupt = len(clients) == 1
+    if interrupt:
+        write(home / 'interrupt-native-login', 'fixture')
+    before = len(calls())
+    output = cli_tty('--attach', 'none' if interrupt else 'ssh', cwd=checkout, interrupt_login=interrupt)
+    assert output.index('Box prepared') < output.index('1/' + str(len(clients)) + ' · Authenticating Codex')
+    assert output.rstrip().endswith('Connect: allset connect dashboard' if interrupt else 'SYNTHETIC SSH SHELL')
+    native_calls = [(c['tool'], c['operation']) for c in calls()[before:]
+                    if c['tool'] in ('codex', 'claude', 'cursor-agent')]
+    if not interrupt:
+        assert native_calls == [('codex', 'login'), ('codex', 'login status'),
+                                ('claude', 'auth login'), ('claude', 'auth status'),
+                                ('cursor-agent', 'login'), ('cursor-agent', 'status')], native_calls
+        for client, label in (('codex', 'Codex'), ('claude', 'Claude Code'), ('cursor', 'Cursor')):
+            assert '✓ ' + label + ' · fixture@example.test' in output
+            saved = json.loads((state / f'credentials/dashboard/agents/{client}.json').read_text())
+            assert not saved['needs_login']
+        assert output.index('✓ Codex ·') < output.index('2/3 · Authenticating Claude Code')
+        assert output.index('✓ Claude Code ·') < output.index('3/3 · Authenticating Cursor')
+        assert output.index('✓ Cursor ·') < output.index('Opening SSH shell')
+    else:
+        assert native_calls == [('codex', 'login')], native_calls
+        assert 'Codex sign-in interrupted' in output and 'Codex skipped · sign in later: allset config codex' in output
+        saved = json.loads((state / 'credentials/dashboard/agents/codex.json').read_text())
+        assert saved['needs_login'] and saved['onboarding_skipped']
+        before = len(calls())
+        cli('--attach', 'none', cwd=checkout, terminal=True, contains='skipped; sign-in needed')
+        assert not any(c['tool'] == 'codex' for c in calls()[before:]), 'Warm entry restarted a skipped login'
+        (home / 'interrupt-native-login').unlink()
+    assert json.loads((project / 'onboarding.json').read_text())['stage'] == 'complete'
+    assert (checkout / 'uncommitted.txt').read_text() == 'work survives\n'
+    assert {c['operation'] for c in calls() if c['tool'] == 'box'} <= {'info', 'status'}
+write(project / 'profile.json', profile)
+(project / 'onboarding.json').unlink()
+write(state / 'agent-profiles/fixture-account/profile.json', {
+    'name': 'fixture-account', 'providers': {'claude': {'account_email': 'fixture@example.test'}}})
+print('PASS: packaged onboarding signs in sequentially, verifies before advancing, and handles interrupt/skip/warm return', flush=True)
 
 write(home / 'box-state', 'stopped')
 before = len(calls())

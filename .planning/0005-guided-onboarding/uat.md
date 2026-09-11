@@ -109,6 +109,35 @@ entry reuses that setup automatically.**
 
 ## Evidence status
 
+### Sequential sign-in follow-up — 2026-09-11
+
+The user requested a visible, continuous Codex → Claude Code → Cursor sequence
+for the chosen subset, with loading feedback, native browser links, verified
+success, and a way to skip. The implemented flow prepares Box first, then numbers
+the selected sign-ins. Ctrl+C during sign-in offers retry/skip/quit. Enter retries;
+quit preserves completed logins, and skip remains explicitly unconnected with an
+individual repair command. Final SSH handoff follows those decisions.
+
+**Local/mock + interactive terminal:** one/two/three-client tests cover ordered
+identity verification and credential save, retry without repeating completed
+clients, foreign-cache refusal, skipped-cache exclusion, quit/EOF, and repair.
+Real PTY tests exercise animation release before native links and preserve stdin.
+The Linux arm64 offline archive in
+`/private/tmp/allset-guided-release-20260911-19` exercises the packaged onboarding
+entrypoint, three synthetic native sign-ins, verification before SSH handoff,
+interrupt/skip, and warm return. Provider, repository-access, SSH, and account
+boundaries are synthetic; real browser/model success remains unverified.
+
+**Next real check:** from the existing `allset-onboarding-test-20260911` checkout,
+run `/private/tmp/allset-guided-onboarding-impl-20260911/bin/allset --attach ssh`.
+Observe Box preparation followed by each selected numbered account step. Complete
+the native browser links using the intended accounts; confirm each public account
+receipt precedes the next client and SSH comes last. Optionally interrupt one
+step and choose skip, then verify only it is reported unconnected on return.
+Do not reset project state or create a replacement fixture/VM just to retry.
+
+### Slice evidence
+
 | Category | Status |
 | --- | --- |
 | Source and native documentation inspection | Performed; gaps recorded in discovery |

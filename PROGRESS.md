@@ -2,6 +2,33 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- Added the requested sequential sign-in UX: selected clients run in Codex,
+  Claude Code, Cursor order, with numbered steps, loading indicators, native
+  browser links, and per-account receipts only after identity verification and
+  credential save. Native output owns the display once it begins. Failed or
+  interrupted sign-in offers retry/skip/quit; Enter retries. Completed accounts
+  survive interruption, explicit skips remain unconnected, and SSH comes last.
+  Guided sign-ins now hold the project operation lock so attached monitors
+  cannot accept partial credentials. Project-bound skip markers suppress restore,
+  capture, repeated prompts, and the skipped client's MCP login; explicit verified
+  repair clears them. No live credentials, VM state, or installed binary changed.
+- Expanded packaged coverage exposed and fixed two handoff/repair defects:
+  embedded bridge assets now resolve from the verified controller directory,
+  not an undefined `__file__`; installed wrappers run native auth/status without
+  requiring conversation cwd, importing absent Infisical companions, or fetching
+  project secrets. Ordinary conversation cwd/secret checks remain intact.
+- **Local/mock + interactive terminal:** race suite, vet, CLI build, and diff
+  whitespace passed. Tests cover 1/2/3-client order, verified save before advance,
+  retry, skip/resume/repair, foreign cache, quit/EOF, child cleanup, terminal stdin,
+  and loading-display release. The Linux arm64 archive under
+  `/private/tmp/allset-guided-release-20260911-19` passed the offline container
+  through three synthetic native accounts and SSH handoff, interrupted sign-in,
+  skip and warm return. Repository access, Box, SSH, and auth are simulated.
+  **Review:** local, non-independent correctness/ownership, security, resources,
+  maintainability, and coverage review; no remaining blocking finding in this
+  follow-up. **Unverified:** live browser authentication and the full first-turn
+  model/MCP/skill/secret acceptance. Next: retry the rebuilt implementation binary
+  in the existing `hello-world` fixture; keep the existing project/Box state.
 - Creation confirmation now defaults to Yes (`[Y/n]`) after the account, billing,
   and machine terms are displayed. **Local/mock:** Enter proceeds through the
   existing creation/reconciliation test; `n`, invalid input, EOF, and Ctrl-C make

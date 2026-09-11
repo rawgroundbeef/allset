@@ -5,11 +5,14 @@ Box state, SSH transport, system bootstrap and Herdr are simulated. Remote Git,
 credential restore and native MCP file projection execute the shipped code.
 """
 import json
+import base64
+import fcntl
 import os
 from pathlib import Path
 import subprocess
 import sys
 import shutil
+import time
 
 home = Path('/home/user')
 assert os.getuid() == 10001 and Path('/opt/checks/smoke.py').is_file()
@@ -28,10 +31,52 @@ def emit(value):
     print(json.dumps(value))
 
 
-if tool == 'claude':
+def assert_login_lock():
+    with (home / '.local/share/box-herdr/projects/dashboard/operation.lock').open() as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        raise AssertionError('Native sign-in is racing background credential capture')
+
+
+if tool == 'git':
+    if args == ['-c', 'credential.helper=', 'ls-remote', '--exit-code', 'https://github.com/example/dashboard.git', 'HEAD']:
+        record('public-access')
+        print('0' * 40 + '\tHEAD')
+    else:
+        os.execv('/usr/bin/git', ['git', *args])
+elif tool in ('codex', 'cursor-agent'):
+    record(' '.join(args))
+    status = ['login', 'status'] if tool == 'codex' else ['status']
+    if args == ['login']:
+        assert_login_lock()
+        time.sleep(.3)
+        print('https://signin.example.test/' + tool, flush=True)
+        if (home / 'interrupt-native-login').exists():
+            # The harness sends SIGINT to AllSet here; this child must be reaped.
+            time.sleep(30)
+            raise AssertionError('Native login outlived cancellation')
+        if tool == 'codex':
+            claims = base64.urlsafe_b64encode(json.dumps({'email': 'fixture@example.test'}).encode()).decode().rstrip('=')
+            path = home / '.codex/auth.json'
+            value = {'tokens': {'access_token': 'synthetic-access', 'id_token': 'fixture.' + claims + '.fixture'}}
+        else:
+            path = home / '.config/cursor/auth.json'
+            value = {'accessToken': 'synthetic-access'}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+        print('Synthetic native sign-in completed', flush=True)
+    else:
+        assert args == status
+        print('Logged in as fixture@example.test' if tool == 'cursor-agent' else 'Logged in using ChatGPT')
+elif tool == 'claude':
     record(' '.join(args[:2]))
     if args[:2] == ['auth', 'login']:
+        assert_login_lock()
         assert args == ['auth', 'login', '--claudeai']
+        print('https://signin.example.test/claude', flush=True)
         path = home / '.claude/.credentials.json'
         value = json.loads(path.read_text()) if path.exists() else {}
         value['claudeAiOauth'] = {'accessToken': 'synthetic-access', 'refreshToken': 'synthetic-refresh'}
@@ -45,6 +90,9 @@ if tool == 'claude':
 elif tool == 'box':
     args = [a for a in args if a not in ('--json', '--no-update')]
     record(args[0])
+    if args == ['status', '--org', 'personal']:
+        emit({'account': {'identifier': 'fixture@example.test', 'loginState': 'active'}})
+        raise SystemExit(0)
     assert args == ['info', 'bx_saved'], 'Unexpected provider operation'
     emit({'box': {'id': 'bx_saved', 'state': (home / 'box-state').read_text(),
                   'ip': '127.0.0.1', 'sshEndpoint': '127.0.0.1:2222',
@@ -54,6 +102,14 @@ elif tool == 'ssh':
     script = args[-1]
     if script == 'true':
         record('check')
+    elif script == 'cd -- /home/user/tasks/shell-dashboard && exec "${SHELL:-/bin/bash}" -l':
+        record('shell-handoff')
+        state = home / '.local/share/box-herdr'
+        assert json.loads((state / 'projects/dashboard/onboarding.json').read_text())['stage'] == 'complete'
+        for client in ('codex', 'claude', 'cursor'):
+            saved = json.loads((state / f'credentials/dashboard/agents/{client}.json').read_text())
+            assert saved.get('contents') and not saved.get('needs_login')
+        print('SYNTHETIC SSH SHELL', flush=True)
     elif 'findmnt' in script and '/var/lib/ascii-lazy/status.json' in script:
         record('filesystem')
         emit({'filesystem': 'ext4', 'phase': 'done'})
@@ -65,7 +121,7 @@ elif tool == 'ssh':
         record('remote-command')
         # Safe only in this offline disposable container; nothing from the host
         # is mounted. This executes actual scripts emitted by the packaged CLI.
-        raise SystemExit(subprocess.call(['bash', '-c', script]))
+        os.execvp('bash', ['bash', '-c', script])
 elif tool == 'scp':
     record('collect')
     assert args[:2] == ['-l', '8192']

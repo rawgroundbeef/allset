@@ -164,7 +164,7 @@ restoration, or a model/tool response. See PROGRESS.md for current evidence.
 `allset config claude|codex|cursor [PROJECT]` resolves the current repository or
 explicit project and dispatches the same login operation as `allset login
 PROJECT CLIENT`. Config review, display and validation keep their existing
-semantics. Only these explicit client commands enter interactive sign-in.
+semantics. These explicit commands and guided onboarding enter interactive sign-in.
 
 The Box strategy requires a valid saved owner; runtime rechecks ownership and
 live state before SSH and filesystem readiness. Login cannot create/resume a
@@ -175,3 +175,13 @@ sign-ins must match it before the selected credential is cached. A pending/rejec
 automatic credential collection skips it until verified explicit sign-in.
 Attached monitors also skip capture while another project operation holds the
 lock. No shared source credential or other client's cache is rewritten by login.
+
+Guided onboarding orders the selected clients as Codex, Claude Code, then Cursor.
+It holds the same project lock through authentication and recovery. Startup
+progress stops before native output begins; verification has its own loading
+phase, and a success receipt requires native identity plus saved credentials.
+An explicit skip records `needs_login` and `onboarding_skipped` in that project's
+private client cache, suppressing restore, background capture, and repeat prompts.
+Repair clears the skip through the existing verified login path. Native login
+and status bypass conversation cwd/secret setup in installed client wrappers;
+ordinary client launches still require the project checkout and scoped context.

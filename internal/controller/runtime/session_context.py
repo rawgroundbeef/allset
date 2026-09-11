@@ -10,8 +10,6 @@ import shutil
 import subprocess
 import sys
 
-import infisical_context
-
 BINARIES = {'codex': 'codex', 'claude': 'claude', 'cursor': 'cursor-agent'}
 MARKER = '# allset project session context\n'
 
@@ -94,6 +92,7 @@ def _secret_environment(context, client):
                    if not key.startswith('INFISICAL_') and key not in requested and key != 'TOKEN'}
     if not requested:
         return environment
+    import infisical_context
     directory = Path(__file__).resolve().parent
     if not context.get('infisical'):
         raise ValueError('This session requires an Infisical binding')
@@ -127,10 +126,20 @@ def main(client, args):
     os.umask(0o077)
     directory = Path(__file__).resolve().parent
     context = json.loads((directory / 'context.json').read_text())
-    if Path.cwd().resolve() != Path(context['checkout']).resolve() and Path(context['checkout']).resolve() not in Path.cwd().resolve().parents:
-        raise ValueError('Run this configured client inside its owned project checkout')
     native = context['native'].get(client)
     if not native: raise ValueError('This client is not selected for the project')
+    authentication = (client == 'codex' and args[:1] == ['login'] or
+                      client == 'claude' and args[:2] in (['auth', 'login'], ['auth', 'status']) or
+                      client == 'cursor' and args[:1] in (['login'], ['status']))
+    if authentication:
+        # SSH sign-in/status starts at home, not the checkout. Native auth needs
+        # neither project secrets nor a conversation's working directory.
+        environment = {key: value for key, value in os.environ.items()
+                       if not key.startswith('INFISICAL_') and key != 'TOKEN'
+                       and key not in context['session_environment']}
+        os.execve(native, [native, *args], environment)
+    if Path.cwd().resolve() != Path(context['checkout']).resolve() and Path(context['checkout']).resolve() not in Path.cwd().resolve().parents:
+        raise ValueError('Run this configured client inside its owned project checkout')
     os.execve(native, [native, *args], _secret_environment(context, client))
 
 

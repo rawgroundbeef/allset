@@ -1,5 +1,6 @@
 """Preparation feedback, released before an interactive terminal takes over."""
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -44,7 +45,7 @@ class Progress:
     """
     def __init__(self, stream=None, *, summary='Workspace prepared'):
         self.stream = stream if stream is not None else sys.stdout
-        self.summary = clean(summary)
+        self.summary = clean(summary) if summary is not None else None
         self.animated = self.stream.isatty() and os.environ.get('TERM') != 'dumb'
         self.color = self.animated and 'NO_COLOR' not in os.environ
         self.lock = threading.Lock()
@@ -135,13 +136,55 @@ class Progress:
         _active = None
         with self.lock:
             self.clear()
-            if kind is None:
+            if kind is None and self.summary is not None:
                 if self.key and self.animated:
                     self.write(self.row('✓', self.title, '32') + '\n')
                 self.write(self.row('✓', self.summary + ' · ' + elapsed(time.monotonic() - self.started), '32') + '\n')
-            else:
+            elif kind is not None and self.summary is not None:
                 title = 'Stopped waiting' if issubclass(kind, KeyboardInterrupt) else 'Could not finish'
                 self.write(self.row('!', title + (': ' + self.title if self.title else ''), '33') + '\n')
             for message in self.notes:
                 self.write('  ' + message + '\n')
         return False
+
+
+def native_handoff(args, title):
+    """Animate startup, then release the display before forwarding native output.
+
+    Stdin remains the caller's terminal and SSH supplies the remote PTY. Do not
+    parse auth URLs or launch another browser flow on top of the client's own.
+    """
+    display = Progress(summary=None)
+    display.__enter__()
+    child = None
+    try:
+        display.update('native-startup', title)
+        child = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        while True:
+            chunk = os.read(child.stdout.fileno(), 8192)
+            if display is not None:
+                display.__exit__(None, None, None)
+                display = None
+            if not chunk:
+                break
+            stream = getattr(sys.stdout, 'buffer', None)
+            if stream is not None:
+                stream.write(chunk)
+                stream.flush()
+            else:
+                sys.stdout.write(chunk.decode('utf-8', errors='replace'))
+                sys.stdout.flush()
+        return child.wait()
+    finally:
+        if display is not None:
+            display.__exit__(None, None, None)
+        if child is not None:
+            # Cancellation must not leave SSH competing with the recovery prompt.
+            if child.poll() is None:
+                child.terminate()
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait()
+            child.stdout.close()

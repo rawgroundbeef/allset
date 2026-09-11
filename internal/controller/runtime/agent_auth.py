@@ -16,6 +16,7 @@ from agent_credentials import has_login, login_contents
 # Only provider login files are transferred; configurations, prompts and repositories are excluded.
 REMOTE_FILES = {'codex': '.codex/auth.json', 'claude': '.claude/.credentials.json',
                 'cursor': '.config/cursor/auth.json'}
+CLIENT_LABELS = {'codex': 'Codex', 'claude': 'Claude Code', 'cursor': 'Cursor'}
 
 
 def login_command(provider):
@@ -181,6 +182,29 @@ def require_login(controller, profile, provider):
     private_write(path, value)
 
 
+def cached_login(controller, profile, binding, provider):
+    """Read only this project's selected client state, including an explicit skip."""
+    if not isinstance(binding.get('providers', {}).get(provider), dict):
+        raise ValueError('Coding client is not selected for this project')
+    path = cache_path(controller, profile, provider)
+    value = read_private(path) if path.exists() else {
+        'project': profile['name'], 'profile': binding['name'], 'provider': provider}
+    if (value.get('project'), value.get('profile'), value.get('provider')) != (
+            profile['name'], binding['name'], provider):
+        raise ValueError('Agent credential cache belongs to a different project or profile')
+    return value
+
+
+def skip_login(controller, profile, provider):
+    """Keep skipped/partial native logins out of restore and background capture."""
+    binding = config(controller, profile)
+    if not binding:
+        raise ValueError('This project has no agent account profile configured')
+    value = cached_login(controller, profile, binding, provider)
+    value.update(needs_login=True, onboarding_skipped=True)
+    private_write(cache_path(controller, profile, provider), value)
+
+
 def bind_verified_identity(controller, binding, provider, email):
     """Bind only identity returned by native status, preserving later mismatch checks."""
     path = controller.STATE / 'agent-profiles' / binding['name'] / 'profile.json'
@@ -206,19 +230,22 @@ def print_accounts(controller, profile):
     if not binding:
         return
     for provider in ('codex', 'claude', 'cursor'):
-        path = cache_path(controller, profile, provider)
-        cached = read_private(path) if path.exists() else {}
+        if provider not in binding.get('providers', {}):
+            continue
+        cached = cached_login(controller, profile, binding, provider)
         selected = binding.get('providers', {}).get(provider, {})
         label = selected.get('account_email', 'account not verified')
         state = 'saved login' if has_login(provider, cached.get('contents')) else 'sign-in needed'
         if cached.get('logged_out') or cached.get('needs_login'):
             state = 'sign-in needed'
-        if state == 'sign-in needed':
+        if cached.get('onboarding_skipped'):
+            state = 'skipped; sign-in needed'
+        if 'sign-in needed' in state:
             state += '; repair with allset config ' + provider
         progress.note(provider + ': ' + label + ' — ' + state)
 
 
-def login(controller, meta, profile, provider):
+def login(controller, meta, profile, provider, *, guided=False):
     """Run one native sign-in, then immediately save only that project's selected provider."""
     binding = config(controller, profile)
     if not binding:
@@ -232,39 +259,51 @@ def login(controller, meta, profile, provider):
         raise ValueError(provider.title() + ' is not selected for this project; no sign-in started')
     expected = selected.get('account_email')
     path = cache_path(controller, profile, provider)
-    pending = read_private(path) if path.exists() else {
-        'project': profile['name'], 'profile': binding['name'], 'provider': provider}
-    if (pending.get('project'), pending.get('profile'), pending.get('provider')) != (
-            profile['name'], binding['name'], provider):
-        raise ValueError('Agent credential cache belongs to a different project or profile')
+    pending = cached_login(controller, profile, binding, provider)
     pending['needs_login'] = True
+    pending.pop('onboarding_skipped', None)
     private_write(path, pending)
-    print('Sign in to ' + provider + ' for ' + profile['name'] + ' (' + binding['name'] + ').', flush=True)
+    if not guided:
+        print('Sign in to ' + provider + ' for ' + profile['name'] + ' (' + binding['name'] + ').', flush=True)
     print('Open the link in your local browser. Use the account for this project.', flush=True)
     args = ['ssh', '-tt']
     if provider == 'codex':
         # Native browser auth works for organizations that disable device codes.
         args += ['-o', 'ExitOnForwardFailure=yes', '-L', '127.0.0.1:1455:127.0.0.1:1455']
     args += [meta['ssh_alias'], shlex.join(login_command(provider))]
-    result = subprocess.call(args)
+    import progress
+    result = (progress.native_handoff(args, 'Opening ' + CLIENT_LABELS[provider] + ' sign-in')
+              if guided else subprocess.call(args))
     if result == 0:
-        identity = native_identity(controller, meta, provider)
-        email = identity.get('email')
-        if (not identity.get('logged_in') or not isinstance(email, str) or len(email) > 254
-                or not re.fullmatch(r'[^\s@\x00-\x1f\x7f]+@[^\s@\x00-\x1f\x7f]+', email)):
-            raise RuntimeError('Could not verify the signed-in account; login was not cached.')
-        if expected and email.casefold() != expected.casefold():
-            raise RuntimeError('Signed in as ' + email + ', but this project expects ' + expected +
-                               '. Repeat the native sign-in with the intended account; login was not cached.')
-        bind_verified_identity(controller, binding, provider, email)
-        capture(controller, meta, profile, [provider], authenticated=True)
-        path = cache_path(controller, profile, provider)
-        saved = read_private(path) if path.exists() else {}
-        if not has_login(provider, saved.get('contents')):
-            require_login(controller, profile, provider)
-            raise RuntimeError('Sign-in ended without a saved provider credential; inspect the native login result.')
-        print(provider + ' login saved for ' + profile['name'] + ' as ' + email + '.', flush=True)
+        with progress.Progress(summary=None) if guided else contextlib.nullcontext():
+            if guided:
+                progress.stage('verify-login', 'Verifying ' + CLIENT_LABELS[provider] + ' account')
+            email = verify_login(controller, meta, profile, binding, provider, expected)
+        if guided:
+            print('  ✓ ' + CLIENT_LABELS[provider] + ' · ' + progress.clean(email), flush=True)
+        else:
+            print(provider + ' login saved for ' + profile['name'] + ' as ' + email + '.', flush=True)
     return result
+
+
+def verify_login(controller, meta, profile, binding, provider, expected):
+    """A successful native exit alone does not establish an account or a saved login."""
+    identity = native_identity(controller, meta, provider)
+    email = identity.get('email')
+    if (not identity.get('logged_in') or not isinstance(email, str) or len(email) > 254
+            or not re.fullmatch(r'[^\s@\x00-\x1f\x7f]+@[^\s@\x00-\x1f\x7f]+', email)):
+        raise RuntimeError('Could not verify the signed-in account; login was not cached.')
+    if expected and email.casefold() != expected.casefold():
+        raise RuntimeError('Signed in as ' + email + ', but this project expects ' + expected +
+                           '. Repeat the native sign-in with the intended account; login was not cached.')
+    bind_verified_identity(controller, binding, provider, email)
+    capture(controller, meta, profile, [provider], authenticated=True)
+    path = cache_path(controller, profile, provider)
+    saved = read_private(path) if path.exists() else {}
+    if not has_login(provider, saved.get('contents')):
+        require_login(controller, profile, provider)
+        raise RuntimeError('Sign-in ended without a saved provider credential; inspect the native login result.')
+    return email
 
 
 def native_identity(controller, meta, provider):

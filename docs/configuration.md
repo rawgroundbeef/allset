@@ -55,6 +55,15 @@ In a terminal, coding-agent selection is a checkbox list: arrow keys move,
 Space selects, and Enter continues. Codex is selected initially. Set
 `ALLSET_ACCESSIBLE=1` to use a plain line-oriented prompt instead.
 
+After Box preparation, selected clients authenticate one at a time in Codex,
+Claude Code, Cursor order. Each numbered step shows startup progress, hands over
+to the native browser link, and verifies and saves that client's account before
+advancing. Ctrl+C during a sign-in offers retry, skip, or quit; failed sign-ins
+offer the same choices. Enter retries. Completed sign-ins survive a quit or
+interruption. Skipped clients remain unconnected and show their exact
+`allset config CLIENT` repair command; they are not prompted again on warm entry.
+SSH opens only after each selected client is connected or explicitly skipped.
+
 This is a real config discovery/init path, not yet an automatic installer for
 arbitrary projects. Existing setup/services/credentials continue to live in the
 local compatibility profiles. The manifest does not accept unsupported fields.
