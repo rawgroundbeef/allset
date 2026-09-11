@@ -2,6 +2,19 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- **User acceptance and branch handoff:** the user accepted this onboarding UX
+  pass and authorized committing/pushing the implementation branch for a real
+  project trial. **Fresh local/mock verification:** `go test -race -count=1 ./...`,
+  `go vet ./...`, `go build -o bin/allset ./cmd/allset`, and diff whitespace passed.
+  The Linux arm64 archive under `/private/tmp/allset-guided-release-20260911-23`
+  passed the offline packaged harness, including first source fetch, client
+  sequence, terminal styling, cancellation, and reuse. These checks made no live
+  provider/auth changes. The normal installed `~/.local/bin/allset` remains the
+  older build; use this worktree's `bin/allset` for the trial. Initial source
+  preparation fetches the GitHub default branch, not unpublished local changes.
+  **Still unverified:** real first-turn model/MCP/skill/secret use. UX acceptance
+  does not close that broader slice criterion. No main-branch merge, release,
+  package publication, or local binary replacement was requested.
 - **Local first-run reset, user-authorized:** superseded the sign-in-only replay
   below by archiving the `hello-world` test checkout's `.allset`, private project
   profile/journal and machine/shell pointers, project credential caches, exclusive

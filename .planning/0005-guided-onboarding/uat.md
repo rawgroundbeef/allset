@@ -109,6 +109,16 @@ entry reuses that setup automatically.**
 
 ## Evidence status
 
+### UX acceptance and real-project trial — 2026-09-11
+
+The user accepted the current onboarding pass and requested commit/push plus
+local use on a real project. This records acceptance of the onboarding experience,
+not evidence of the full first-turn model/MCP/skill/secret criterion. Fresh race,
+vet, build, and Linux arm64 offline packaged checks passed; artifact and command
+details are in `PROGRESS.md`. The rebuilt worktree binary can be invoked from a
+local GitHub-backed checkout; its coding environment is remote in Box. First
+preparation uses the GitHub default branch, not uncommitted local files.
+
 ### Live sign-in and visual follow-up — 2026-09-11
 
 **Real remote + interactive, user-reported:** the user's transcript from the
