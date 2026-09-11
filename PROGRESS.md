@@ -1,5 +1,36 @@
 # AllSet progress
 
+## Remote coding session onboarding planning — 2026-09-11
+
+- User accepted a continuous bare-`allset` setup/open flow, including developers
+  with no existing AllSet profile. Box is the initial provider; research into
+  additional VM providers and a provider-choice step is a recorded follow-up.
+- Planning is isolated on `feat/guided-onboarding` from `origin/main` at
+  `c081163`. [Discovery](.planning/0005-guided-onboarding/discovery.md),
+  [decisions](.planning/0005-guided-onboarding/decisions.md), and a preliminary
+  [threat model](.planning/0005-guided-onboarding/threat-model.md) capture the
+  current evidence and implementation risks.
+- The user explicitly refocused completion on configured coding clients and
+  automatic account/MCP/skill/Infisical/secret binding to remote sessions. App
+  dependency installation, language detection, services, and previews are out
+  of the completion criteria. The earlier app-focused interpretation is
+  superseded. [Acceptance](.planning/0005-guided-onboarding/uat.md) was rewritten
+  around a usable first agent turn and fast returning entry and was explicitly
+  approved by the user on 2026-09-11.
+- Completed the [PRD](.planning/0005-guided-onboarding/prd.md) and
+  [implementation bootstrap](.planning/0005-guided-onboarding/bootstrap.md).
+  [Local consistency review](.planning/0005-guided-onboarding/plan-review.md)
+  found no remaining planning blocker after clarifying native sign-in order,
+  provider injection defaults, and the AI guide's responsibilities. Review was
+  not independent. Documentation links, module paths, and formatting were checked.
+- Next: use the bootstrap in a fresh implementation context from the final
+  planning commit; implement the complete session workflow and execute its gates.
+- Current gaps include new private profile/account creation, native session
+  context application, automatic MCP secret delivery, and skill support.
+  Selected native docs and existing runtime boundaries were inspected. No
+  implementation, VM operation, account change, or hey.lol manifest write has
+  occurred. Real authentication, integration use, and latency remain unverified.
+
 ## Individual agent sign-in — 2026-09-11
 
 - User request: repair one configured project's agent login with a short command.

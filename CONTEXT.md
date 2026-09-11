@@ -19,6 +19,10 @@ An interactive conversation with a coding agent working in a project environment
 The program a developer chooses to run agent sessions. Its signed-in identity is
 independent of the project's application and secret-service identities.
 
+**Session context**:
+The coding-client identity, tools, skills, integrations, and secret access made
+available to an agent session for its developer and project.
+
 **Project worktree**:
 A checkout inside a project environment with its own working files and branch.
 Concurrent agents can use separate worktrees without requiring separate machines.
@@ -50,6 +54,9 @@ A browser-accessible running instance of a project's application.
   worktrees do not by themselves isolate application services or databases.
 - **Account bindings** belong to the developer and project, independently of the
   shared **Project configuration**.
+- An **Agent session** receives a **Session context** using the developer's
+  chosen **Account bindings** and the project's selected requirements. Preparing
+  one session's context does not change another session's identity.
 - A **Compute provider** hosts **Project environments**; a **Terminal interface**
   presents **Agent sessions** to the developer.
 
@@ -65,3 +72,5 @@ A browser-accessible running instance of a project's application.
 - An agent account and an application's secret-service account are independent
   identities; selecting one does not select the other.
 - Multiple agents in one project do not imply multiple project environments.
+- A prepared coding session does not imply that the project's application is
+  installed, running, or available as a preview.
