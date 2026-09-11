@@ -2,6 +2,17 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- **Local private-state maintenance, user-authorized:** prepared the existing
+  `hello-world` fixture to replay all three native sign-ins. Under its onboarding
+  and project operation locks, set only the three project credential caches'
+  `needs_login` flags and changed the onboarding stage to `profile-saved`.
+  Verified the existing runtime selects Codex, Claude Code, and Cursor for retry;
+  credential contents, account bindings, profile, machine/shell pointers, and
+  `.allset` are unchanged. Existing capture excludes pending credentials. No
+  provider, SSH, browser, or remote filesystem operation ran; no credentials were
+  deleted or copied into evidence. **Next interactive check:** run the existing
+  implementation binary from the local test checkout to review the styled native
+  sign-in sequence. This replay has been prepared, not completed.
 - Added the requested inline visual polish: a bold project heading, cyan active
   steps/spinner, green completion/account checks, amber skip/recovery marks, and
   dimmed metadata. TTY preparation now replaces one live row and leaves one
