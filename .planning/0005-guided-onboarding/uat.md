@@ -109,6 +109,26 @@ entry reuses that setup automatically.**
 
 ## Evidence status
 
+### First source fetch follow-up — 2026-09-11
+
+The user's live retry reached repository preparation, then failed because the
+checkout adapter rejected a full GitHub URL accepted by shared configuration.
+The prior packaged flow started with a prepared checkout, so it did not cover
+this initial source-fetch branch. The fix accepts validated GitHub URL forms,
+shorthand, and local origins without mutating shared settings or live state.
+
+**Local/mock:** first-fetch tests now start without a source cache or known base
+SHA and run real Git through default-branch discovery, fetch, and bundle creation.
+The Linux arm64 archive in `/private/tmp/allset-guided-release-20260911-21` passes
+the same source-fetch boundary with only its network endpoint substituted.
+This is first-source-fetch evidence, not a claim of complete cold VM preparation.
+**Real public network:** the exact `https://github.com/octocat/hello-world` source
+fetched and bundled in a temporary local cache at commit
+`7fd1a60b01f91b314f59955a4e4d4e80d8edf11d`. No Box/account operation was used.
+**Next real check:** rerun the existing implementation command below, preserving
+the saved project and machine. Full live remote preparation and OAuth remain
+unverified.
+
 ### Sequential sign-in follow-up — 2026-09-11
 
 The user requested a visible, continuous Codex → Claude Code → Cursor sequence

@@ -491,14 +491,16 @@ def register(meta, *, prepare=False):
 
 def source_checkout(repo, base, directory, *, github=None, clean=False):
     """Fetch an isolated shallow source cache without checking out or altering the user's worktree."""
-    if Path(repo).exists():
-        url = command(['git', '-C', repo, 'remote', 'get-url', 'origin']).stdout.strip()
-    elif re.fullmatch(r'[\w.-]+/[\w.-]+', repo):
-        url = 'https://github.com/' + repo + '.git'
+    if '://' not in repo and not repo.startswith('git@') and Path(repo).exists():
+        origin = command(['git', '-C', repo, 'remote', 'get-url', 'origin']).stdout.strip()
     else:
-        raise ValueError('Repository must be a local checkout or GitHub owner/repo')
-    if not url.startswith(('https://github.com/', 'git@github.com:')):
-        raise ValueError('This launcher currently supports GitHub repositories only')
+        origin = repo
+    repository = repository_access.github_repository(origin)
+    # Shared config accepts shorthand and full HTTPS/SSH URLs. Clean onboarding
+    # and named GitHub accounts use HTTPS, never the laptop's ambient SSH identity.
+    # Keep explicitly configured SSH transport working for legacy callers.
+    url = ('https://github.com/' + repository + '.git' if clean or github or
+           not origin.startswith(('git@github.com:', 'ssh://git@github.com/')) else origin)
     git = ['git']
     environment = None
     if clean or github:
@@ -513,7 +515,6 @@ def source_checkout(repo, base, directory, *, github=None, clean=False):
             raise ValueError('Local source checkout requires an explicit GitHub CLI account')
         token = github_auth.run_native(['gh', 'auth', 'token', '--hostname', 'github.com',
                                         '--user', github['account_login']], env=environment)
-        repository = repository_access.github_repository(url)
         github_auth.verify_account('gh', {**environment, 'GH_TOKEN': token},
                                    github['account_login'], repository)
         environment['GH_TOKEN'] = token

@@ -103,6 +103,13 @@ laptop's entire configuration directory, switch its active account, or narrow th
 existing token's permissions. This adapter is bundled, but its private account
 bindings are not part of the shared `.allset` manifest.
 
+First-checkout source preparation accepts GitHub shorthand, credential-free
+HTTPS/SSH URLs, and an explicit local checkout's origin through the same runtime
+repository validator. Clean onboarding and named GitHub accounts fetch canonical
+HTTPS URLs without ambient SSH identity; legacy explicit SSH transport remains
+supported. Fetch and bundle creation use a separate bare source cache and leave
+the developer's checkout, origin, index, and uncommitted files unchanged.
+
 SSH, PTY, and workspace handoffs validate the saved checkout's project, machine,
 role, and absolute directory. Auth and declared MCP preparation remain separate
 from terminal attachment. No running session is migrated and no takeover flag is added. Foreground

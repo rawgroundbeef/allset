@@ -44,6 +44,15 @@ if tool == 'git':
     if args == ['-c', 'credential.helper=', 'ls-remote', '--exit-code', 'https://github.com/example/dashboard.git', 'HEAD']:
         record('public-access')
         print('0' * 40 + '\tHEAD')
+    elif 'https://github.com/example/dashboard.git' in args and ('ls-remote' in args or 'fetch' in args):
+        assert 'credential.helper=' in args
+        assert 'GH_TOKEN' not in os.environ and os.environ['GIT_CONFIG_GLOBAL'] == os.devnull
+        record('source-fetch' if 'fetch' in args else 'source-head')
+        # Substitute only the network endpoint; real Git discovers HEAD, fetches
+        # the committed source and builds the bundle in a fresh bare repository.
+        args = [(home / 'tasks/shell-dashboard').as_uri() if arg == 'https://github.com/example/dashboard.git'
+                else arg for arg in args]
+        os.execv('/usr/bin/git', ['git', *args])
     else:
         os.execv('/usr/bin/git', ['git', *args])
 elif tool in ('codex', 'cursor-agent'):

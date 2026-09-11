@@ -2,6 +2,29 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- Fixed the user's first-checkout failure for
+  `https://github.com/octocat/hello-world`: shared configuration accepted the full
+  URL, but source preparation only accepted shorthand or a local path. It now
+  reuses the runtime GitHub validator for URL/shorthand/local origins. Clean and
+  named-account fetches use HTTPS; legacy explicit SSH transport is preserved.
+  Explicit URLs cannot be mistaken for local paths, and unsafe URLs fail before
+  account lookup or network calls. No live profile, journal, checkout, machine,
+  credential, or installed `allset` was modified; the implementation binary was
+  rebuilt at its existing path.
+  **Local/mock:** regression failed before the fix and passes afterward; native
+  Git exercises default-branch discovery, shallow fetch, bundle contents, URL
+  variants, and unchanged local origin/index/uncommitted work. Race suite, vet,
+  build, and diff whitespace passed. The Linux arm64 archive in
+  `/private/tmp/allset-guided-release-20260911-21` passed the offline packaged
+  first-source-fetch check and existing sequential-login/interrupt/reuse checks.
+  Previous packaged onboarding coverage began with an existing checkout and
+  missed this failure; source-fetch coverage now starts with no cache/base SHA.
+  **Real public network:** the exact `octocat/hello-world` URL fetched and bundled
+  commit `7fd1a60b01f91b314f59955a4e4d4e80d8edf11d` in a disposable local directory,
+  without Box or account operations. **Review:** local/non-independent; no
+  blocking finding in this fix. **Unverified:** complete live remote preparation
+  and native OAuth. Next: rerun the same implementation command from the existing
+  test project; no state reset is needed for this parser fix.
 - Added the requested sequential sign-in UX: selected clients run in Codex,
   Claude Code, Cursor order, with numbered steps, loading indicators, native
   browser links, and per-account receipts only after identity verification and

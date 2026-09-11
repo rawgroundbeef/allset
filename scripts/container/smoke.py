@@ -181,6 +181,31 @@ assert (home / '.codex/auth.json').stat().st_mode & 0o077 == 0
 assert not any(c['tool'] == 'herdr' for c in calls())
 print('PASS: bundled preparation, synthetic login restore and native MCP projection', flush=True)
 
+# Unlike the warm-checkout fixture above, exercise the packaged first source
+# fetch from a full URL and an unknown default branch. Only the network is fake.
+runtime_directory, = [entry for entry in cache.iterdir() if entry.is_dir()]
+source_proof = state / 'source-proof'
+before = len(calls())
+proof = subprocess.run(['python3', '-I', '-c', '''import os,sys
+from pathlib import Path
+sys.dont_write_bytecode=True
+sys.path.insert(0,sys.argv[1])
+os.environ.update(_ALLSET_STATE_ROOT=sys.argv[2],_ALLSET_BOX_BIN='/unused-box',_ALLSET_HERDR_BIN='/unused-herdr')
+import projects
+sha,bundle,url=projects.c.source_checkout('https://github.com/example/dashboard','',Path(sys.argv[3]),clean=True)
+assert url=='https://github.com/example/dashboard.git' and sha==sys.argv[4]
+assert projects.c.command(['git','bundle','list-heads',str(bundle)]).stdout.strip()==sha+' refs/heads/box-source'
+assert projects.c.command(['git','-C',str(bundle.parent/'source.git'),'show','box-source:tracked.txt']).stdout=='before\\n'
+print('first-source-bundle-verified')
+''', str(runtime_directory), str(state), str(source_proof), shell['base_sha']],
+    capture_output=True, text=True, timeout=30)
+assert proof.returncode == 0, proof.stderr[-3000:]
+assert proof.stdout.strip() == 'first-source-bundle-verified'
+assert [(call['tool'], call['operation']) for call in calls()[before:]] == [('git', 'source-head'), ('git', 'source-fetch')]
+assert (checkout / 'tracked.txt').read_text() == 'after\n'
+assert (checkout / 'uncommitted.txt').read_text() == 'work survives\n'
+print('PASS: packaged first checkout accepts the full URL, resolves HEAD, fetches and bundles committed source without altering local work', flush=True)
+
 tty_output = cli_tty('connect', 'dashboard', '--attach', 'none')
 assert '\r\x1b[2K' in tty_output and 'Workspace prepared' in tty_output
 assert 'Preparing your MCP settings' in tty_output and 'saved login' in tty_output

@@ -513,13 +513,89 @@ class RuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(c, 'command', side_effect=command), \
              patch.object(github_auth, 'run_native', return_value='selected-token'), \
              patch.object(github_auth, 'verify_account'):
-            sha, _, _ = c.source_checkout('acme/dashboard', '', Path(tmp),
+            sha, _, _ = c.source_checkout('https://github.com/acme/dashboard.git', '', Path(tmp),
                 github={'provider': 'github-cli', 'account_login': 'fixture-user'}, clean=True)
         self.assertEqual(sha, 'abc123')
         self.assertNotIn('selected-token', ' '.join(str(arg) for args, _ in calls for arg in args))
         fetch = next((args, env) for args, env in calls if 'fetch' in args)
         self.assertEqual(fetch[1]['GH_TOKEN'], 'selected-token')
         self.assertEqual(fetch[1]['GIT_CONFIG_GLOBAL'], os.devnull)
+
+    def test_first_source_checkout_accepts_github_forms_and_preserves_local_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); source = root / 'existing checkout'; source.mkdir()
+            native = c.command
+            native(['git', 'init', '-b', 'fixture-default', str(source)])
+            native(['git', '-C', str(source), 'remote', 'add', 'origin', 'git@github.com:octocat/hello-world.git'])
+            (source / 'tracked.txt').write_text('committed\n')
+            native(['git', '-C', str(source), 'add', 'tracked.txt'])
+            native(['git', '-C', str(source), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test',
+                    'commit', '-m', 'fixture'])
+            sha = native(['git', '-C', str(source), 'rev-parse', 'HEAD']).stdout.strip()
+            (source / 'tracked.txt').write_text('user edits\n')
+            (source / 'untracked.txt').write_text('user file\n')
+            original_config = (source / '.git/config').read_bytes()
+            original_index = (source / '.git/index').read_bytes()
+            url = 'https://github.com/octocat/hello-world.git'
+            forms = ['octocat/hello-world', 'https://github.com/octocat/hello-world', url,
+                     'git@github.com:octocat/hello-world.git', 'ssh://git@github.com/octocat/hello-world.git', str(source)]
+            calls = []
+            def local_transport(args, **kwargs):
+                if 'ls-remote' in args or 'fetch' in args:
+                    self.assertIn(url, args, 'clean checkout used a different repository or ambient SSH')
+                    self.assertIn('credential.helper=', args)
+                    self.assertNotIn('GH_TOKEN', kwargs['env'])
+                    calls.append(args)
+                    args = [source.as_uri() if arg == url else arg for arg in args]
+                return native(args, **kwargs)
+            for index, repo in enumerate(forms):
+                with self.subTest(repo=repo), patch.object(c, 'command', side_effect=local_transport), \
+                     patch.object(github_auth, 'run_native', side_effect=AssertionError('public clone read account store')):
+                    actual, bundle, canonical = c.source_checkout(repo, '', root / str(index), clean=True)
+                    self.assertEqual((actual, canonical), (sha, url))
+                    heads = native(['git', 'bundle', 'list-heads', str(bundle)]).stdout
+                    self.assertEqual(heads.strip(), sha + ' refs/heads/box-source')
+                    self.assertEqual(native(['git', '-C', str(bundle.parent / 'source.git'),
+                                             'show', 'box-source:tracked.txt']).stdout, 'committed\n')
+            self.assertEqual(len(calls), len(forms) * 2)
+            self.assertEqual((source / '.git/config').read_bytes(), original_config)
+            self.assertEqual((source / '.git/index').read_bytes(), original_index)
+            self.assertEqual((source / 'tracked.txt').read_text(), 'user edits\n')
+            self.assertEqual((source / 'untracked.txt').read_text(), 'user file\n')
+
+    def test_source_checkout_rejects_unsafe_origins_before_auth_or_fetch(self):
+        for repo in ('https://synthetic-secret@github.com/octocat/hello-world',
+                     'https://github.com/octocat/hello-world?token=synthetic-secret',
+                     'https://github.com/octocat/hello-world#synthetic-secret',
+                     'https://github.com.evil.test/octocat/hello-world', 'file:///tmp/repository',
+                     'https://github.com/octocat/../hello-world', 'ssh://root@github.com/octocat/hello-world'):
+            with self.subTest(repo=repo), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(c, 'command') as command, patch.object(github_auth, 'run_native') as auth:
+                with self.assertRaises(ValueError) as failure:
+                    c.source_checkout(repo, '', Path(tmp), clean=True,
+                                      github={'provider': 'github-cli', 'account_login': 'fixture'})
+                self.assertNotIn('synthetic-secret', str(failure.exception))
+                command.assert_not_called(); auth.assert_not_called()
+                self.assertEqual(list(Path(tmp).iterdir()), [])
+
+    def test_legacy_source_checkout_retains_explicit_ssh_transport(self):
+        for url in ('git@github.com:octocat/hello-world.git', 'ssh://git@github.com/octocat/hello-world.git'):
+            with self.subTest(url=url), tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(c, 'command', return_value=types.SimpleNamespace(stdout='fixture-sha\n')) as command:
+                _, _, actual = c.source_checkout(url, 'main', Path(tmp))
+                self.assertEqual(actual, url)
+                fetch = next(call for call in command.call_args_list if 'fetch' in call.args[0])
+                self.assertIn(url, fetch.args[0])
+                self.assertIsNone(fetch.kwargs['env'])
+
+    def test_explicit_source_url_cannot_be_reinterpreted_as_a_local_path(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(c.Path, 'exists', return_value=True) as exists, \
+             patch.object(c, 'command', return_value=types.SimpleNamespace(stdout='fixture-sha\n')) as command:
+            _, _, url = c.source_checkout('https://github.com/octocat/hello-world', 'main', Path(tmp), clean=True)
+            self.assertEqual(url, 'https://github.com/octocat/hello-world.git')
+            exists.assert_not_called()
+            self.assertFalse(any('get-url' in call.args[0] for call in command.call_args_list))
 
     def test_skill_projection_preserves_supporting_files_and_rejects_edits(self):
         with tempfile.TemporaryDirectory() as tmp:
