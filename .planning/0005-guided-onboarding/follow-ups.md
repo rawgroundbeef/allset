@@ -39,10 +39,11 @@ integration binding. The user-approved acceptance describes the corrected target
 - **2026-09-11 — Native behavior needs real evidence.** Existing sign-in coverage
   is local/mock. Fresh remote preparation, correct model-account use, MCP calls,
   skill invocation, secret delivery, and cold/warm timing remain unverified.
-- **2026-09-11 — Provider response shapes.** Synthetic tests exercise Box account
-  identity and `safeForThirdParties` parsing. Authorized real UAT must confirm the
-  installed native CLI's actual status/environment JSON before treating those
-  checks as provider evidence.
+- **2026-09-11 — Provider response shapes.** Read-only live checks confirmed Box
+  0.1.228's `account.identifier`/`loginState` status fields and environment-list
+  `safeForThirdParties` field. The status parser was corrected and the rebuilt
+  binary reached creation confirmation. Environment creation/safety mutations
+  still require real UAT; read-only field inspection does not prove those effects.
 - **2026-09-11 — Native launch behavior.** The wrapper preserves argv by `execve`
   and affects only future launches in the project-owned environment. Real native
   resume/browser/TTY behavior and first-turn discovery remain unverified.

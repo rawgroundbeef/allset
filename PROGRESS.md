@@ -2,6 +2,19 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- Fixed a live Box status mismatch: Box `0.1.228` returns the signed-in email in
+  `account.identifier` with `loginState: active`. Onboarding now normalizes that
+  field into the private email binding, rejects inactive/invalid/conflicting
+  identities, and ignores unrelated config/billing contacts. Existing private
+  `email`/`id` bindings keep their format; mismatch checks still precede mutation.
+  **Real provider read-only + interactive:** rebuilt executable in the user's
+  `hello-world` fixture read the live account and allowance, displayed personal
+  billing and machine terms, and reached the creation confirmation. Answered `n`;
+  no private profile, journal, or machine record was created. Native `env list`
+  also confirmed the `safeForThirdParties` field shape without changing an environment.
+  **Local/mock:** race tests, vet, and build passed; current native response shape,
+  legacy fields, malformed/inactive identities, unrelated contacts, and changed
+  accounts have regression coverage. Cloud creation and OAuth remain unverified.
 - Implemented the approved slice from planning commit `79f0f87` in the fresh
   worktree `/private/tmp/allset-guided-onboarding-impl-20260911` on
   `feat/guided-onboarding-implementation` as implementation commit `5d332d6`.
@@ -53,7 +66,7 @@
   Cursor.` followed by `Box billing [personal]:`; cancellation again made no
   provider call.
 - **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built in
-  `/private/tmp/allset-guided-release-20260911-16`. The Linux
+  `/private/tmp/allset-guided-release-20260911-17`. The Linux
   amd64 archive passed the network-disabled container proof: continuous setup and
   cancellation guards, bundled runtime, synthetic login restore, native MCP
   projection, terminal display, workspace reuse, work collection, and ownership
@@ -73,7 +86,7 @@
   gates included preserving native local client binaries, pinning Box identity
   across interrupted onboarding, pre-validating private bindings before mutation,
   and allowing a manifest created by configuration-only init to continue later.
-- **Unverified:** real Box response shapes and environment safety, cloud creation/
+- **Unverified:** Box environment safety mutations, cloud creation/
   restoration, browser/native account flows, model response, MCP call, skill
   invocation, secret consumption, active-conversation behavior, and cold/warm
   timing. The approved demo pass criterion is therefore not yet claimed.

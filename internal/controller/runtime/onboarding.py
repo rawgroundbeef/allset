@@ -87,22 +87,33 @@ def _environment_is_safe(value, name):
 
 
 def _account_identity(status):
-    """Extract stable public account identity; never persist the changing status response."""
+    """Read only the account section; config and billing contacts are not identities."""
+    account = status.get('account') if isinstance(status, dict) else None
+    if not isinstance(account, dict):
+        raise ValueError('Box status did not expose a stable public account identity')
+    if 'loginState' in account and account['loginState'] != 'active':
+        raise ValueError('Box account is not signed in; run box login, then retry allset')
     values = {'id': [], 'email': []}
-    def visit(value):
-        if isinstance(value, dict):
-            for key, item in value.items():
-                normalized = key.lower().replace('_', '')
-                if normalized in ('accountid', 'userid') and isinstance(item, str):
-                    values['id'].append(item)
-                elif normalized in ('email', 'useremail', 'accountemail') and isinstance(item, str):
-                    values['email'].append(item)
-                elif isinstance(item, (dict, list)):
-                    visit(item)
-        elif isinstance(value, list):
-            for item in value: visit(item)
-    visit(status)
-    identity = {key: items[0] for key, items in values.items() if items and items[0] and len(items[0]) <= 200}
+    for key, value in account.items():
+        normalized = key.lower().replace('_', '')
+        if normalized in ('accountid', 'userid'):
+            values['id'].append(value)
+        elif normalized in ('email', 'useremail', 'accountemail'):
+            values['email'].append(value)
+        elif key == 'identifier':
+            # Box 0.1.228 exposes the signed-in email here, not in account.email.
+            # Normalize to the existing private binding format for safe retries.
+            values['email'].append(value)
+    identity = {}
+    for key, candidates in values.items():
+        for value in candidates:
+            if (not isinstance(value, str) or not 0 < len(value) <= 200
+                    or any(char.isspace() or ord(char) < 32 or ord(char) == 127 for char in value)
+                    or (key == 'email' and not re.fullmatch(r'[^@]+@[^@]+', value))):
+                raise ValueError('Box status returned an invalid account identity')
+            if key in identity and identity[key] != value:
+                raise ValueError('Box status returned conflicting account identities')
+            identity[key] = value
     if not identity:
         raise ValueError('Box status did not expose a stable public account identity')
     return identity
@@ -230,11 +241,11 @@ def ensure_profile(controller, request):
         if subprocess.call([str(controller.BOX), '--no-update', 'login', *scope_args]):
             raise ValueError('Box sign-in did not complete') from None
         status = controller.box('status', *scope_args)
-    limits = controller.box('limits', *scope_args)
-    controller.check_allowance(limits, 60, reserved_seconds=0)
     account_identity = _account_identity(status)
     if journal and journal.get('account_identity') != account_identity:
         raise ValueError('Active Box account does not match the interrupted onboarding journal')
+    limits = controller.box('limits', *scope_args)
+    controller.check_allowance(limits, 60, reserved_seconds=0)
     print('Box', flush=True)
     print('  Account  ' + (account_identity.get('email') or account_identity['id']), flush=True)
     print('  Billing  ' + scope, flush=True)

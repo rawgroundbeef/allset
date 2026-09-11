@@ -369,6 +369,44 @@ class RuntimeTests(unittest.TestCase):
             self.assertIn('--projectId=project', run.call_args.args[0])
             self.assertIn('--env=dev', run.call_args.args[0])
 
+    def test_box_identity_uses_native_status_account_identifier(self):
+        # Structure observed from Box 0.1.228 status --org personal; values synthetic.
+        status = {
+            'account': {'identifier': 'box@example.test', 'loginState': 'active',
+                        'plan': 'trial', 'status': 'active', 'suspension': None},
+            'api': {'healthy': True, 'error': None, 'status': 'healthy', 'url': 'https://box.example.test'},
+            'config': {'apiUrl': 'https://box.example.test', 'channel': 'stable', 'path': '/fixture/box.json'},
+        }
+        self.assertEqual(onboarding._account_identity(status), {'email': 'box@example.test'})
+        status['config']['email'] = 'unrelated@example.test'
+        self.assertEqual(onboarding._account_identity(status), {'email': 'box@example.test'})
+        profile = {'provider_binding': {'billing_scope': 'personal',
+                                       'account_identity': {'email': 'box@example.test'}}}
+        controller = types.SimpleNamespace(box=lambda *args: status)
+        onboarding.verify_provider_binding(controller, profile)
+        status['account']['identifier'] = 'other@example.test'
+        with self.assertRaisesRegex(ValueError, 'does not match'):
+            onboarding.verify_provider_binding(controller, profile)
+
+    def test_box_identity_rejects_missing_inactive_or_ambiguous_account(self):
+        cases = [
+            {'config': {'email': 'not-an-account@example.test'}},
+            {'account': {}, 'billing': {'email': 'not-an-account@example.test'}},
+            {'account': {'identifier': 'box@example.test', 'loginState': 'logged_out'}},
+            {'account': {'identifier': None, 'loginState': 'active'}},
+            {'account': {'identifier': 'box@example.test\n', 'loginState': 'active'}},
+            {'account': {'identifier': 'box\x1b[31m@example.test', 'loginState': 'active'}},
+            {'account': {'identifier': 'not-an-email', 'loginState': 'active'}},
+            {'account': {'identifier': 'box@example.test', 'email': 'other@example.test'}},
+        ]
+        for status in cases:
+            with self.subTest(status=status), self.assertRaises(ValueError):
+                onboarding._account_identity(status)
+        self.assertEqual(onboarding._account_identity({'account': {'email': 'box@example.test'}}),
+                         {'email': 'box@example.test'})
+        self.assertEqual(onboarding._account_identity({'account': {'accountId': 'account-fixture'}}),
+                         {'id': 'account-fixture'})
+
     def test_onboarding_reconciles_environment_timeout_and_records_safe_binding(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); calls = []; listed = 0
@@ -376,7 +414,9 @@ class RuntimeTests(unittest.TestCase):
             def box(*args):
                 nonlocal listed
                 calls.append(args)
-                if args[0] == 'status': return {'account': {'email': 'box@example.test'}}
+                if args[0] == 'status':
+                    return {'account': {'identifier': 'box@example.test', 'loginState': 'active',
+                                        'plan': 'trial', 'status': 'active', 'suspension': None}}
                 if args[0] == 'limits': return {'fixture': True}
                 if args[:2] == ('env', 'list'):
                     listed += 1

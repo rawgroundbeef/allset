@@ -114,7 +114,8 @@ entry reuses that setup automatically.**
 | Source and native documentation inspection | Performed; gaps recorded in discovery |
 | Local/mock implementation tests | Passed on macOS arm64, 2026-09-11: strict shared/private contracts, continuous and resumed CLI paths, no app/fallback execution, Box identity and timeout guards, managed skill conflicts, scoped secret filtering, and native argv/cwd preservation |
 | Packaged offline implementation test | Passed with the Linux amd64 release archive in a network-disabled container, 2026-09-11; Box, SSH, Herdr, native login, and MCP boundaries were simulated |
-| Real remote and native account checks | Unverified |
+| Real provider status and pre-creation prompt | Passed 2026-09-11 against Box 0.1.228: `account.identifier`/`loginState: active` parsed, live allowance checked, account/billing/machine terms shown; declined creation and confirmed no profile/journal/machine record |
+| Real remote creation and native OAuth checks | Unverified |
 | Interactive model/MCP/skill/secret proof | Unverified |
 | Cold and warm latency measurements | Unverified |
 | Human alignment on this walkthrough | Approved by the user, 2026-09-11 |
