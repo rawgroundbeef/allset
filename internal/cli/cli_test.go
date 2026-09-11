@@ -252,8 +252,8 @@ func TestConfigGuidanceWorksWithoutRegistrationOrProvider(t *testing.T) {
 		if command == "schema" && !json.Valid(out.Bytes()) {
 			t.Fatal("schema is not JSON")
 		}
-		if command == "guide" && !strings.Contains(out.String(), "not implemented yet") {
-			t.Fatal("guide does not distinguish future functionality")
+		if command == "guide" && !strings.Contains(out.String(), "requires authorized interactive UAT") {
+			t.Fatal("guide does not distinguish configured state from real acceptance")
 		}
 	}
 }

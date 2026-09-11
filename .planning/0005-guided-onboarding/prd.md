@@ -1,6 +1,7 @@
 # Remote coding session onboarding
 
-Status: requirements from user-approved UAT, 2026-09-11. Implementation pending.
+Status: requirements from user-approved UAT, 2026-09-11. Implemented for
+local/mock verification; real acceptance remains pending authorization.
 Approval: the user replied "approve" after the corrected remote-session
 [acceptance walkthrough](uat.md) was presented. This approval covers the product
 contract and planning continuation, not live account/provider operations.

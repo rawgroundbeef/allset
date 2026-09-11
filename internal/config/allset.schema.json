@@ -53,6 +53,20 @@
         "$ref": "#/$defs/mcp"
       },
       "description": "Project-owned native MCP servers. Credentials use native login or remote environment references; never inline values. Omit to leave MCPs unmanaged, set {} to remove managed entries."
+    },
+    "skills": {
+      "type": "object",
+      "maxProperties": 32,
+      "propertyNames": { "$ref": "#/$defs/identifier" },
+      "additionalProperties": { "$ref": "#/$defs/skill" },
+      "description": "Repository-relative skill directories projected to selected native clients."
+    },
+    "session_environment": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
+      "additionalProperties": { "$ref": "#/$defs/sessionVariable" },
+      "description": "Named environment requirements supplied from the developer's private Infisical binding; values never belong here."
     }
   },
   "$defs": {
@@ -77,6 +91,27 @@
           "init",
           "mcp"
         ]
+      }
+    },
+    "agent": { "enum": ["codex", "claude", "cursor"] },
+    "skill": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+" },
+        "agents": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/agent" } }
+      }
+    },
+    "sessionVariable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["secret_path", "secret_key"],
+      "properties": {
+        "secret_path": { "type": "string", "pattern": "^/(?!.*\\.\\.).+" },
+        "secret_key": { "type": "string", "minLength": 1 },
+        "agents": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/agent" } },
+        "mcps": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } }
       }
     },
     "mcp": {
@@ -118,6 +153,10 @@
         "bearer_token_env_var": {
           "type": "string",
           "pattern": "^[A-Z_][A-Z0-9_]*$"
+        },
+        "oauth": {
+          "const": true,
+          "description": "Use each selected client's native OAuth login for this HTTP server."
         },
         "agents": {
           "type": "array",
@@ -162,6 +201,11 @@
               {
                 "required": [
                   "bearer_token_env_var"
+                ]
+              },
+              {
+                "required": [
+                  "oauth"
                 ]
               }
             ]
@@ -238,7 +282,14 @@
                 ]
               }
             ]
-          }
+          },
+          "allOf": [
+            {
+              "not": {
+                "required": ["oauth", "bearer_token_env_var"]
+              }
+            }
+          ]
         }
       ]
     }

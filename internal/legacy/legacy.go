@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rawgroundbeef/allset/internal/config"
@@ -37,9 +38,37 @@ type Profile struct {
 	Aliases      []string `json:"aliases"`
 	Repository   string   `json:"repository"`
 	AgentProfile string   `json:"agent_profile"`
+	CodingOnly   bool     `json:"coding_only"`
+	Clients      []string `json:"clients"`
 	Github       *struct {
 		Provider string `json:"provider"`
 	} `json:"github"`
+}
+
+func (b Backend) OnboardingPending(p config.Project) (bool, error) {
+	profile, err := b.CheckBinding(p)
+	if err != nil || !profile.CodingOnly {
+		return false, err
+	}
+	var journal struct {
+		Project string `json:"project"`
+		Stage   string `json:"stage"`
+	}
+	err = config.ReadJSON(filepath.Join(b.Root, "projects", p.Name, "onboarding.json"), &journal, false)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cannot read onboarding journal: %w", err)
+	}
+	if journal.Project != p.Name {
+		return false, errors.New("onboarding journal belongs to another project")
+	}
+	valid := map[string]bool{"environment-intent": true, "environment-created": true, "environment-safe": true, "profile-saved": true, "complete": true}
+	if !valid[journal.Stage] {
+		return false, errors.New("onboarding journal has an invalid stage")
+	}
+	return journal.Stage != "complete", nil
 }
 
 type Machine struct {
@@ -250,7 +279,8 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 	default:
 		return plan, errors.New("unsupported lifecycle operation")
 	}
-	if p.MCPs != nil && (operation == "open" || operation == "resume" || operation == "connect") {
+	if (p.MCPs != nil || p.Skills != nil || p.SessionEnvironment != nil) &&
+		(operation == "open" || operation == "resume" || operation == "connect") {
 		payload, err := json.Marshal(p)
 		if err != nil {
 			return plan, err
@@ -264,5 +294,56 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 		return plan, errors.New("Python 3.11+ is required by the bundled Box runtime")
 	}
 	plan.Args = controller.Arguments(b.Root, b.Box, filepath.Join(b.Root, "bin", "herdr"), plan.Args)
+	return plan, nil
+}
+
+func (b Backend) OnboardingPlan(p config.Project, clients []strategy.ClientBinding, ttl int, attach string) (Plan, error) {
+	plan := Plan{Project: p.Name, Operation: "onboard", Backend: "box", Executable: b.Python,
+		Attachment: attach, Interactive: true}
+	if _, err := b.CheckBinding(p); err == nil {
+		pending, pendingErr := b.OnboardingPending(p)
+		if pendingErr != nil {
+			return plan, pendingErr
+		}
+		if !pending {
+			return b.Plan(p, "open", "", ttl, attach)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return plan, err
+	}
+	if ttl < 1 || ttl > 7200 {
+		return plan, errors.New("this migration retains the existing 1–7200 second trial limit")
+	}
+	if !terminal.Valid(attach) && attach != "terminal" {
+		return plan, errors.New("attachment must be workspace, herdr, ssh, none, or terminal")
+	}
+	_, existingErr := b.CheckBinding(p)
+	if len(clients) == 0 && existingErr != nil {
+		if _, journalErr := os.Stat(filepath.Join(b.Root, "projects", p.Name, "onboarding.json")); journalErr != nil {
+			return plan, strategy.ErrOnboardingChoicesRequired
+		}
+	}
+	seen := map[string]bool{}
+	for _, binding := range clients {
+		if (binding.Client != "claude" && binding.Client != "codex" && binding.Client != "cursor") || seen[binding.Client] {
+			return plan, errors.New("clients must uniquely select claude, codex, or cursor")
+		}
+		if !strings.Contains(strings.TrimSpace(binding.ExpectedAccount), "@") || strings.ContainsAny(binding.ExpectedAccount, "\x00\r\n") {
+			return plan, errors.New("each selected client requires its expected account email")
+		}
+		seen[binding.Client] = true
+	}
+	payload, err := json.Marshal(struct {
+		Project config.Project           `json:"project"`
+		Clients []strategy.ClientBinding `json:"clients"`
+	}{p, clients})
+	if err != nil {
+		return plan, err
+	}
+	plan.Args = []string{"-c", openBridge, "bundled-controller", p.Name, fmt.Sprint(ttl), attach, "onboard", string(payload), mcps.Runtime}
+	plan.Args = controller.Arguments(b.Root, b.Box, filepath.Join(b.Root, "bin", "herdr"), plan.Args)
+	if !filepath.IsAbs(plan.Executable) {
+		return plan, errors.New("Python 3.11+ is required by the bundled Box runtime")
+	}
 	return plan, nil
 }

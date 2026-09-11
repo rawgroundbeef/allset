@@ -1,9 +1,9 @@
 # Remote coding session onboarding acceptance
 
-Status: **user-approved on 2026-09-11; not executed**. The user replied "approve"
-after this corrected walkthrough was presented.
-This replaces the unapproved app/preview-focused draft. Proposed behavior below
-is not yet implemented.
+Status: **user-approved on 2026-09-11; local/mock implementation evidence
+executed; real acceptance pending authorization**. The user replied "approve"
+after this corrected walkthrough was presented. This replaces the unapproved
+app/preview-focused draft.
 
 ## Outcome
 
@@ -112,11 +112,15 @@ entry reuses that setup automatically.**
 | Category | Status |
 | --- | --- |
 | Source and native documentation inspection | Performed; gaps recorded in discovery |
-| Local/mock and packaged offline implementation tests | Not run; implementation pending |
+| Local/mock implementation tests | Passed on macOS arm64, 2026-09-11: strict shared/private contracts, continuous and resumed CLI paths, no app/fallback execution, Box identity and timeout guards, managed skill conflicts, scoped secret filtering, and native argv/cwd preservation |
+| Packaged offline implementation test | Passed with the Linux amd64 release archive in a network-disabled container, 2026-09-11; Box, SSH, Herdr, native login, and MCP boundaries were simulated |
 | Real remote and native account checks | Unverified |
 | Interactive model/MCP/skill/secret proof | Unverified |
 | Cold and warm latency measurements | Unverified |
 | Human alignment on this walkthrough | Approved by the user, 2026-09-11 |
 
-Record revision, expected/actual outcome, safe output, duration, and remaining
-human interaction for each executed check. Do not present mocks as real auth.
+The implementation worktree is based on planning commit `79f0f87`; its final
+revision and gate results are recorded in `PROGRESS.md`. No VM, provider account,
+browser session, or real credential was mutated during these checks. The demo
+pass criterion remains unproven until the authorized real first-turn and warm-
+return checks execute. Do not present mocks as real auth.

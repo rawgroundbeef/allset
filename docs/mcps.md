@@ -91,11 +91,18 @@ versions where possible; server commands execute code on the VM.
 }
 ```
 
+For an HTTP server that uses native OAuth instead of a bearer environment
+reference, set `"oauth": true`. First-time onboarding runs each selected
+client's native MCP login; Cursor's workspace-specific enable step is applied
+after successful login. Omit `oauth` for public HTTP servers.
+
 The internal examples are placeholders, not installed services. `agents` is
 optional and defaults to all three. Environment references name variables in the
-**remote agent's environment**. AllSet does not copy laptop environment values,
-fetch arbitrary Infisical paths, or supply a token just because it is named.
-Start that agent with the project's existing secret-injection setup when needed.
+**remote agent's environment**. Declare their approved Infisical source and
+recipients in `session_environment`; the project launch adapter fetches only
+those keys into each new selected client process, and its MCP children inherit
+them. AllSet never copies ambient laptop values or treats an MCP declaration as
+secret-scope authorization.
 For HTTP OAuth servers, use the chosen agent's native MCP login on the VM; it
 owns its OAuth storage and refresh behavior. AllSet's dedicated MCP login
 command currently handles the Trigger preset only.

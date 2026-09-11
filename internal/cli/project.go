@@ -73,44 +73,46 @@ func (a App) current(ctx context.Context, f config.File) (config.Project, error)
 
 // initialize creates a reviewable repository entry point. It never provisions a
 // VM, guesses credentials, executes a package script, or replaces an existing file.
-func (a App) initialize(ctx context.Context, f config.File, args []string) (config.Project, error) {
+func (a App) initialize(ctx context.Context, f config.File, args []string) (config.Project, *bufio.Reader, error) {
 	flags := a.flags("init")
 	name := flags.String("name", "", "Project name")
 	backend := flags.String("backend", "", "Compute provider")
 	accept := flags.Bool("yes", false, "Accept inferred project identity and provider")
 	if err := flags.Parse(args); err != nil {
-		return config.Project{}, err
+		return config.Project{}, nil, err
 	}
 	if flags.NArg() != 0 {
-		return config.Project{}, errors.New("use allset init [--name NAME] [--backend SERVICE] [--yes]")
+		return config.Project{}, nil, errors.New("use allset init [--name NAME] [--backend SERVICE] [--yes]")
 	}
 	location, err := a.location()
 	if err != nil {
-		return config.Project{}, err
+		return config.Project{}, nil, err
 	}
 	if location.ManifestPath != "" {
 		p, err := a.current(ctx, f)
 		if err != nil {
-			return p, err
+			return p, nil, err
 		}
 		if (*name != "" && p.Name != *name) || (*backend != "" && p.Backend != *backend) {
-			return p, errors.New("project config already exists with a different binding; it was not replaced")
+			return p, nil, errors.New("project config already exists with a different binding; it was not replaced")
 		}
 		fmt.Fprintln(a.Out, "Using", location.ManifestPath)
 		if !*accept {
-			if _, err := a.reviewSetup(p, true); err != nil {
-				return p, err
+			reader, err := a.reviewSetup(p, true)
+			if err != nil {
+				return p, nil, err
 			}
+			return p, reader, nil
 		}
-		return p, nil
+		return p, nil, nil
 	}
 	repo, err := a.repository(ctx, location.Root)
 	if err != nil {
-		return config.Project{}, err
+		return config.Project{}, nil, err
 	}
 	p, known := f.ResolveRepository(repo)
 	if known != nil && !errors.Is(known, config.ErrUnregistered) {
-		return p, known
+		return p, nil, known
 	}
 	fmt.Fprintf(a.Out, "Project setup: %s\n", repo)
 	fmt.Fprintln(a.Out, "Shared project settings go in .allset. Account choices and credentials stay private.")
@@ -118,12 +120,12 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 	if !*accept {
 		reader, err = a.reviewSetup(p, false)
 		if err != nil {
-			return p, err
+			return p, nil, err
 		}
 	}
 	if known == nil {
 		if (*name != "" && p.Name != *name) || (*backend != "" && p.Backend != *backend) {
-			return p, errors.New("requested project identity conflicts with this repository's saved environment")
+			return p, nil, errors.New("requested project identity conflicts with this repository's saved environment")
 		}
 		fmt.Fprintln(a.Out, "Using this repository's saved project settings.")
 	} else {
@@ -146,27 +148,27 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 			fmt.Fprintln(a.Out, "Press Enter to accept a suggested value, or Ctrl+C to cancel.")
 			inferred, err = setupAnswer(reader, a.Out, "1/2 Project name", inferred)
 			if err != nil {
-				return p, err
+				return p, nil, err
 			}
 			provider, err = setupAnswer(reader, a.Out, "2/2 Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
 			if err != nil {
-				return p, err
+				return p, nil, err
 			}
 		}
 		p = config.Project{Name: inferred, Repository: repo, Backend: provider}
 	}
 	if _, err := a.Strategies.Lookup(p.Backend); err != nil {
-		return p, err
+		return p, nil, err
 	}
 	if err := config.CheckLocalBinding(f, p); err != nil {
-		return p, err
+		return p, nil, err
 	}
 	path := filepath.Join(location.Root, config.ProjectFilename)
 	if err := config.WriteProject(path, config.Manifest{Version: 1, Project: p}); err != nil {
-		return p, err
+		return p, nil, err
 	}
 	fmt.Fprintf(a.Out, "Saved %s\nProject: %s · Compute: %s\n", path, p.Name, p.Backend)
-	return p, nil
+	return p, reader, nil
 }
 
 func (a App) initCommand(ctx context.Context, args []string) int {
@@ -176,7 +178,7 @@ func (a App) initCommand(ctx context.Context, args []string) int {
 	} else if err != nil {
 		return a.fail(err)
 	}
-	p, err := a.initialize(ctx, f, args)
+	p, _, err := a.initialize(ctx, f, args)
 	if errors.Is(err, errSetupHandoff) {
 		return 0
 	}

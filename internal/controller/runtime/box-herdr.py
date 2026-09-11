@@ -45,10 +45,10 @@ PROJECT_IGNORES = ('/.npmrc\n/.codex/auth.json*\n/.claude/.credentials*\n/.confi
 HOOK_SHA256 = '38a90a2a99872d06dcbc978e7613406cdd852dbb07503abd7a113f518d5951f3'
 
 
-def command(args, *, cwd=None, data=None, timeout=180, check=True):
+def command(args, *, cwd=None, data=None, timeout=180, check=True, env=None):
     """Capture a command without a shell; callers must not print secret-bearing results."""
     result = subprocess.run([str(a) for a in args], cwd=cwd, input=data,
-                            capture_output=True, text=True, timeout=timeout)
+                            capture_output=True, text=True, timeout=timeout, env=env)
     if check and result.returncode:
         raise RuntimeError(f'{Path(str(args[0])).name} failed: '
                            f'{(result.stderr or result.stdout)[-3000:]}')
@@ -225,7 +225,7 @@ def reserved_allowance(exclude=None, *, horizon_seconds=None):
     return seconds
 
 
-def create(meta, ttl, template=None, environment=None):
+def create(meta, ttl, template=None, environment=None, *, no_ambient=False, billing_scope=None):
     """Create once and journal the ID immediately; never retry an ambiguous create."""
     if not isinstance(environment, str) or not environment.strip():
         raise ValueError('An explicit Box environment is required before creating a machine')
@@ -236,6 +236,10 @@ def create(meta, ttl, template=None, environment=None):
         save(meta)
         args = [str(BOX), '--no-update', '--json', 'new', '--type', 'small',
                 '--environment', environment, '--ttl', str(ttl)]
+        if billing_scope:
+            args += ['--org', billing_scope]
+        if no_ambient:
+            args.append('--no-env')
         if template:
             args += ['--from', template]
         with subprocess.Popen(args, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as process:
@@ -485,7 +489,7 @@ def register(meta, *, prepare=False):
     save(meta)
 
 
-def source_checkout(repo, base, directory):
+def source_checkout(repo, base, directory, *, github=None, clean=False):
     """Fetch an isolated shallow source cache without checking out or altering the user's worktree."""
     if Path(repo).exists():
         url = command(['git', '-C', repo, 'remote', 'get-url', 'origin']).stdout.strip()
@@ -495,18 +499,44 @@ def source_checkout(repo, base, directory):
         raise ValueError('Repository must be a local checkout or GitHub owner/repo')
     if not url.startswith(('https://github.com/', 'git@github.com:')):
         raise ValueError('This launcher currently supports GitHub repositories only')
-    command(['git', 'check-ref-format', '--branch', base])
+    git = ['git']
+    environment = None
+    if clean or github:
+        import github_auth
+        environment = {**github_auth.clean_environment(), 'GIT_TERMINAL_PROMPT': '0',
+                       'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1',
+                       'GIT_ASKPASS': '/bin/false'}
+        git += ['-c', 'credential.helper=']
+    if github:
+        github_auth.validate(github)
+        if github['provider'] != 'github-cli':
+            raise ValueError('Local source checkout requires an explicit GitHub CLI account')
+        token = github_auth.run_native(['gh', 'auth', 'token', '--hostname', 'github.com',
+                                        '--user', github['account_login']], env=environment)
+        repository = repository_access.github_repository(url)
+        github_auth.verify_account('gh', {**environment, 'GH_TOKEN': token},
+                                   github['account_login'], repository)
+        environment['GH_TOKEN'] = token
+        git += ['-c', 'credential.helper=!gh auth git-credential',
+                '-c', 'credential.https://github.com.useHttpPath=true']
+    if not base:
+        result = command([*git, 'ls-remote', '--symref', url, 'HEAD'], timeout=120, env=environment).stdout
+        match = re.search(r'^ref:\s+refs/heads/([^\s]+)\s+HEAD$', result, re.MULTILINE)
+        if not match:
+            raise RuntimeError('Repository default branch could not be established')
+        base = match.group(1)
+    command([*git, 'check-ref-format', '--branch', base], env=environment)
     cache = directory / 'source.git'
-    command(['git', 'init', '--bare', str(cache)])
-    command(['git', '-C', str(cache), 'fetch', '--depth=1', url, '+' + base + ':refs/heads/box-source'], timeout=300)
-    sha = command(['git', '-C', str(cache), 'rev-parse', 'box-source']).stdout.strip()
+    command([*git, 'init', '--bare', str(cache)], env=environment)
+    command([*git, '-C', str(cache), 'fetch', '--depth=1', url, '+' + base + ':refs/heads/box-source'], timeout=300, env=environment)
+    sha = command([*git, '-C', str(cache), 'rev-parse', 'box-source'], env=environment).stdout.strip()
     bundle = directory / 'source.bundle'
-    command(['git', '-C', str(cache), 'bundle', 'create', str(bundle), 'box-source'], timeout=300)
+    command([*git, '-C', str(cache), 'bundle', 'create', str(bundle), 'box-source'], timeout=300, env=environment)
     return sha, bundle, url
 
 
 def configure_task(meta, bundle, *, with_agent=True):
-    """Prepare a unique worktree; shell-only callers stop after dependency setup without an agent."""
+    """Prepare a unique worktree; shell callers stop after declared coding/setup work."""
     refresh_ssh(meta)
     progress.stage('repository', 'Preparing your project', 'Setting up the checkout')
     state = '/home/user/.box-herdr/tasks/' + meta['task_id']

@@ -31,6 +31,25 @@ func TestMCPValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPOAuthIsExplicitAndCannotMixWithBearerCredentials(t *testing.T) {
+	yes := true
+	no := false
+	servers := map[string]MCP{"docs": {URL: "https://example.test/mcp", OAuth: &yes}}
+	if err := ValidateMCPs(servers); err != nil {
+		t.Fatal(err)
+	}
+	server := servers["docs"]
+	server.BearerTokenEnvVar = "DOCS_TOKEN"
+	servers["docs"] = server
+	if err := ValidateMCPs(servers); err == nil {
+		t.Fatal("OAuth and bearer token accepted together")
+	}
+	servers["docs"] = MCP{URL: "https://example.test/mcp", OAuth: &no}
+	if err := ValidateMCPs(servers); err == nil {
+		t.Fatal("explicit false OAuth accepted as configured authentication")
+	}
+}
 func TestMCPUnknownCredentialFieldsRejected(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ".allset")
 	os.WriteFile(path, []byte(`{"version":1,"name":"dashboard","repository":"acme/dashboard","backend":"box","mcps":{"trigger":{"preset":"trigger","project_ref":"proj_work","token":"must-not-save"}}}`), 0600)

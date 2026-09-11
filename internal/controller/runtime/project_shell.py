@@ -83,14 +83,18 @@ def prepare_repository(meta, profile, *, create_terminal=True):
         checkout['project_profile'] = profile
         checkout['session_interface'] = 'herdr' if create_terminal else 'ssh'
         if checkout['phase'] != 'shell-ready':
-            progress.stage('repository', 'Preparing your project', 'Setting up the first checkout and dependencies')
+            progress.stage('repository', 'Preparing your project', 'Setting up the first checkout and coding tools')
             directory = c.STATE / 'tasks' / checkout['task_id']
             bundle = directory / 'source.bundle'
             if not checkout.get('base_sha'):
-                sha, bundle, url = c.source_checkout(profile['repository'], profile['base'], directory)
+                sha, bundle, url = c.source_checkout(
+                    profile['repository'], profile['base'], directory,
+                    github=profile.get('github') if profile.get('coding_only') else None,
+                    clean=profile.get('coding_only') is True)
                 checkout.update(base_sha=sha, repository=url); c.save(checkout)
             c.configure_task(checkout, bundle, with_agent=False)
-        access = repository_access.configure(c.remote, meta, checkout['cwd'], checkout['repository'], profile.get('github'))
+        access = repository_access.configure(c.remote, meta, checkout['cwd'], checkout['repository'], profile.get('github'),
+                                             require_access=profile.get('coding_only') is True)
         if access['github_verified']:
             progress.note('GitHub access verified: ' + access['repository'])
         else:
@@ -105,6 +109,7 @@ def prepare_repository(meta, profile, *, create_terminal=True):
         branch = c.remote(meta, shlex.join(['git', '-C', checkout['cwd'], 'branch', '--show-current'])).strip()
         progress.note('Repository: ' + checkout['cwd'])
         progress.note('Branch: ' + (branch or '(detached HEAD)'))
+        return checkout
 
 
 def login_project(profile, provider):

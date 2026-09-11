@@ -11,14 +11,13 @@ AllSet reads a shared `.allset` file, resolves your project's environment, and
 opens a shell in the terminal you're already using. Account bindings belong to
 you; the configuration belongs to the project. Box is the first compute provider.
 
-**Early alpha:** this repository implements configuration discovery, strict
-validation, existing project connections, and native MCP configuration. The Box
-workspace controller is included in the executable. Existing private project
-profiles and credentials still live under `~/.local/share/box-herdr`; creating
-those bindings from `.allset` is not implemented yet. A fresh checkout can build
-the complete CLI, but setting up an unfamiliar project still needs that private
-configuration. See [remaining work](docs/architecture.md#remaining-extraction).
-Issues and contributions are welcome.
+**Early alpha:** this repository implements strict project discovery, guided
+first-time Box setup, explicit coding-client account bindings, native MCP and
+skill projection, and scoped Infisical delivery to new client processes. Private
+choices and credentials remain under `~/.local/share/box-herdr`; `.allset` holds
+only shared requirements. Real provider/browser acceptance is still environment-
+dependent and tracked separately from local/mock evidence. Issues and
+contributions are welcome.
 
 ## Build
 
@@ -50,21 +49,20 @@ allset config validate --project
 allset --dry-run --json
 ```
 
-Run `allset` in the project for the guided configuration walkthrough. When
-`.allset` is missing, interactive open starts setup: it infers the Git origin,
-shows saved project settings for review, or asks for the project name and
-compute provider. Choose terminal setup, guidance for your preferred coding
-agent, or cancel. Setup returns to the prompt without starting or resuming a VM.
-Run `allset` again to open the configured environment.
+Run `allset` in the project for the continuous onboarding walkthrough. When
+`.allset` is missing, it reviews the Git identity and compute provider, asks for
+the coding clients and expected accounts, displays Box scope/lifetime terms,
+uses native sign-in where required, prepares the repository and integrations,
+and enters through the caller's selected connection interface. A returning open
+reuses completed state and repairs an incomplete onboarding journal.
 
 To work with your preferred coding agent, ask it to run `allset config guide`
 in this repository and walk through the supported configuration with you.
 `allset init` reopens this review even when `.allset` already exists; there is
 no need to delete it. Agents and scripts can use `allset init --yes` to accept
 the configuration without prompts. It never replaces an existing file or
-creates a VM. The current
-walkthrough covers project configuration; missing provider/account setup is
-still reported as incomplete.
+creates a VM. Explicit `init` is configuration-only and never performs provider
+or account setup.
 
 Opening a workspace shows live preparation phases with a spinner and elapsed
 time. File restoration and connection waits explain what is happening; the
@@ -87,11 +85,12 @@ lines; `NO_COLOR` disables color. Saved logins are labeled as saved, not verifie
 }
 ```
 
-Commit `.allset` with the project. Keep credentials out of it. Optional `aliases`
-and agent-specific MCP declarations are supported. Setup commands, services,
-previews, agent accounts, Infisical bindings, and skills are not yet declarative
-fields; unknown fields fail validation. Existing private project profiles retain
-those settings privately.
+Commit `.allset` with the project. Keep credentials out of it. Optional `aliases`,
+agent-specific MCP declarations, repository-relative `skills`, and
+`session_environment` secret references are supported. Agent/provider account
+choices and the Infisical identity/credential reference remain private. App setup,
+services, and previews remain optional compatibility-profile behavior and do not
+gate coding-session onboarding. Unknown fields fail validation.
 
 Named shortcuts use `~/.config/allset/config.json`, respecting `XDG_CONFIG_HOME`.
 Override it with `ALLSET_CONFIG` or `--config PATH`. Export editor schemas with

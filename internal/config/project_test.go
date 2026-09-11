@@ -37,6 +37,48 @@ func TestDiscoveryDoesNotCrossGitWorktreeBoundaries(t *testing.T) {
 	}
 }
 
+func TestManifestSessionRequirementsAreStrictAndContainNoValues(t *testing.T) {
+	valid := Manifest{Version: 1, Project: Project{Name: "demo", Repository: "acme/demo", Backend: "box",
+		MCPs:   map[string]MCP{"tools": {Command: "/opt/tools", EnvVars: []string{"TOOLS_TOKEN"}}},
+		Skills: map[string]Skill{"fixture": {Path: ".agents/skills/fixture", Agents: []string{"codex"}}},
+		SessionEnvironment: map[string]SessionVariable{"TOOLS_TOKEN": {
+			SecretPath: "/allset", SecretKey: "TOOLS_TOKEN", Agents: []string{"codex"}, MCPs: []string{"tools"},
+		}},
+	}}
+	if err := valid.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*Manifest){
+		func(m *Manifest) { m.Skills["fixture"] = Skill{Path: "../private"} },
+		func(m *Manifest) { m.SessionEnvironment["token"] = m.SessionEnvironment["TOOLS_TOKEN"] },
+		func(m *Manifest) {
+			value := m.SessionEnvironment["TOOLS_TOKEN"]
+			value.MCPs = []string{"missing"}
+			m.SessionEnvironment["TOOLS_TOKEN"] = value
+		},
+		func(m *Manifest) {
+			m.MCPs["tools"] = MCP{Command: "/opt/tools", EnvVars: []string{"OTHER_TOKEN"}}
+		},
+		func(m *Manifest) {
+			m.MCPs["tools"] = MCP{Command: "/opt/tools", EnvVars: []string{"TOOLS_TOKEN"}, Agents: []string{"claude"}}
+		},
+		func(m *Manifest) {
+			value := m.SessionEnvironment["TOOLS_TOKEN"]
+			value.Agents = []string{"codex", "codex"}
+			m.SessionEnvironment["TOOLS_TOKEN"] = value
+		},
+	} {
+		copy := valid
+		copy.MCPs = map[string]MCP{"tools": valid.MCPs["tools"]}
+		copy.Skills = map[string]Skill{"fixture": valid.Skills["fixture"]}
+		copy.SessionEnvironment = map[string]SessionVariable{"TOOLS_TOKEN": valid.SessionEnvironment["TOOLS_TOKEN"]}
+		mutate(&copy)
+		if err := copy.Validate(); err == nil {
+			t.Fatal("invalid session requirement accepted", copy)
+		}
+	}
+}
+
 func TestProjectRejectsTerminalUnknownSecretsAndSymlinkAndNeverClobbers(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, ProjectFilename)

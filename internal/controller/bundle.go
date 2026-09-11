@@ -20,6 +20,7 @@ import (
 //
 //go:embed runtime/progress.py runtime/box-herdr.py runtime/projects.py runtime/project_shell.py runtime/profiles.py
 //go:embed runtime/agent_auth.py runtime/agent_credentials.py runtime/github_auth.py runtime/infisical_context.py
+//go:embed runtime/onboarding.py runtime/session_context.py runtime/skills.py
 //go:embed runtime/repository_access.py runtime/worker.py runtime/bootstrap.sh runtime/prepare.sh
 //go:embed runtime/app-runtime.py runtime/service-exec.py runtime/preview-gateway.mjs runtime/preview-tunnel.py
 var sources embed.FS

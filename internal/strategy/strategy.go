@@ -4,6 +4,7 @@ package strategy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"github.com/rawgroundbeef/allset/internal/config"
 	"github.com/rawgroundbeef/allset/internal/execution"
 )
+
+var ErrOnboardingChoicesRequired = errors.New("choose at least one coding client")
 
 type Check struct {
 	Name   string `json:"name"`
@@ -22,6 +25,19 @@ type Diagnosis struct {
 	Project string  `json:"project"`
 	Overall string  `json:"overall"`
 	Checks  []Check `json:"checks"`
+}
+
+// ClientBinding is a deliberate private account choice. It is passed only to
+// an executing interactive onboarding plan; credential material stays native.
+type ClientBinding struct {
+	Client          string `json:"client"`
+	ExpectedAccount string `json:"expected_account"`
+}
+
+// Onboarder is implemented by strategies that can create a missing private
+// project binding. Keeping it separate preserves the read-only Strategy contract.
+type Onboarder interface {
+	OnboardingPlan(config.Project, []ClientBinding, int, string) (execution.Plan, error)
 }
 
 // Strategy is the contract consumed by the CLI. Implementations must keep Validate,

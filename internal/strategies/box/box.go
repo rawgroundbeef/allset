@@ -31,9 +31,17 @@ func (s Strategy) Validate(p config.Project) error {
 	}
 	_, err := s.Controller.CheckBinding(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("Box workspace setup for %s is not configured; this version opens existing profiles but does not yet provision a new project from .allset", p.Name)
+		return fmt.Errorf("Box workspace setup for %s is not configured; run bare allset interactively to complete private onboarding", p.Name)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	if pending, pendingErr := s.Controller.OnboardingPending(p); pendingErr != nil {
+		return pendingErr
+	} else if pending {
+		return fmt.Errorf("guided onboarding for %s is incomplete; opening will resume the pending stage", p.Name)
+	}
+	return nil
 }
 func (s Strategy) Inspect(p config.Project) (any, error) {
 	if err := s.Validate(p); err != nil {
@@ -52,6 +60,13 @@ func (s Strategy) Plan(p config.Project, operation, agent string, ttl int, attac
 		return execution.Plan{}, err
 	}
 	return s.Controller.Plan(p, operation, agent, ttl, attach)
+}
+
+func (s Strategy) OnboardingPlan(p config.Project, clients []strategy.ClientBinding, ttl int, attach string) (execution.Plan, error) {
+	if p.Backend != "box" {
+		return execution.Plan{}, errors.New("Box strategy received a different backend")
+	}
+	return s.Controller.OnboardingPlan(p, clients, ttl, attach)
 }
 
 func (s Strategy) Diagnose(ctx context.Context, p config.Project, offline bool) strategy.Diagnosis {
@@ -105,6 +120,22 @@ func (s Strategy) Diagnose(ctx context.Context, p config.Project, offline bool) 
 	} else {
 		add("agent accounts", "unchecked", "Bound to "+profile.AgentProfile+"; native login status has not been probed")
 	}
-	add("Infisical, MCPs, skills, previews", "unchecked", "Remote readiness probes are not implemented in this version")
+	if pending, err := s.Controller.OnboardingPending(p); err != nil {
+		add("onboarding", "fail", err.Error())
+	} else if pending {
+		add("onboarding", "pending", "A saved stage will resume on the next interactive open")
+	} else if profile.CodingOnly {
+		add("onboarding", "pass", "Private coding-session setup completed")
+	}
+	if len(p.MCPs) > 0 {
+		add("MCPs", "unchecked", fmt.Sprintf("%d declared; native first-turn use needs interactive verification", len(p.MCPs)))
+	}
+	if len(p.Skills) > 0 {
+		add("skills", "unchecked", fmt.Sprintf("%d declared; native discovery needs interactive verification", len(p.Skills)))
+	}
+	if len(p.SessionEnvironment) > 0 {
+		add("session secrets", "unchecked", fmt.Sprintf("%d scoped values declared; values were not read by doctor", len(p.SessionEnvironment)))
+	}
+	add("application and previews", "unchecked", "Not part of coding-session onboarding readiness")
 	return d
 }

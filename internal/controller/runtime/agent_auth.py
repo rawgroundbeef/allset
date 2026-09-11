@@ -198,6 +198,8 @@ def print_accounts(controller, profile):
         state = 'saved login' if has_login(provider, cached.get('contents')) else 'sign-in needed'
         if cached.get('logged_out') or cached.get('needs_login'):
             state = 'sign-in needed'
+        if state == 'sign-in needed':
+            state += '; repair with allset config ' + provider
         progress.note(provider + ': ' + label + ' — ' + state)
 
 

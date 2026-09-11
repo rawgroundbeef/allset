@@ -31,23 +31,24 @@ or invalid file never falls back to some other saved project.
 `init` preserves an existing `.allset` unchanged. Schema exports are named
 `allset.schema.json`.
 
-Without a file, bare interactive `allset` starts the guided configuration flow.
+Without a file, bare interactive `allset` starts the guided onboarding flow.
 It shows an existing repository registration for review before saving it,
 without changing account bindings. For an unfamiliar repository it explains shared and
 private settings, infers the origin, asks for a name and compute service, and
-saves a strict project config. Setup then returns without creating, resuming,
-or connecting to a VM. Run `allset` again to open the environment.
+saves a strict project config. It then asks for private coding-client/account
+choices and continues through Box association, native sign-in, coding-only
+repository preparation, integration application, and connection in one invocation.
 Named shortcuts and noninteractive use of saved registrations do not write a
 repository file. `allset init` reopens the review even when `.allset` exists;
 keeping that configuration leaves the file unchanged. Noninteractive init
 requires `--yes`.
 
-The review offers terminal setup, a copyable prompt for the user's preferred
-coding agent, or cancellation. The agent prompt asks it to run `allset config
-guide`, inspect the repository and bindings, and discuss supported settings.
-Selecting this handoff changes no files and starts no agent or VM. New native provider setup
-is not implemented yet, so a missing local Box profile is reported as incomplete
-and no VM is provisioned. Dry runs and read-only commands never run this flow.
+The review offers direct setup, a configuration guide for the user's preferred
+coding agent, or cancellation. Selecting the guide changes no files and starts no
+agent or VM. The direct path creates a versioned private profile and uniquely
+named Box environment, disables ambient provider credential injection before
+compute creation, and journals each stage for retry. Dry runs and read-only
+commands never run this flow.
 
 This is a real config discovery/init path, not yet an automatic installer for
 arbitrary projects. Existing setup/services/credentials continue to live in the
@@ -86,15 +87,32 @@ or touches authentication.
 
 | Location | Purpose |
 | --- | --- |
-| Repository `.allset` | Shared environment requirements; currently identity/repository/compute and native MCPs. Setup, services, agents, and skills are the next extension. |
+| Repository `.allset` | Shared identity/repository/compute, native MCPs, repository-relative skills, and named session secret requirements. |
 | Local project account profiles | Personal/work account choices, Infisical instance/org/project/principal and scoped credential references. Retained as private data under `~/.local/share/box-herdr`, separate from bundled controller code. |
 | Secure credential store | Authentication material, supplied separately from source and templates. |
 | Local runtime state | Actual VM IDs, SSH identities, worktrees, panes, ports, setup revisions. |
 
-Future reconciliation should reuse the persistent project VM, detect configuration
-and dependency changes, and update only owned setup. It must preserve active
-agents, isolate concurrent app instances, and never infer credentials from another
-project's current login. Defining these fields alone would not implement them.
+Reconciliation reuses the persistent project VM and completed onboarding stages,
+updates only AllSet-owned MCP/skill/session entries, and refuses conflicting user
+edits. Context changes affect future client launches; active conversations are not
+restarted or switched.
+
+## Skills and session environment
+
+`skills` maps a stable name to a repository-relative directory containing
+`SKILL.md`, with optional `agents`. AllSet copies the complete selected directory
+to each supported native discovery scope, records its digest, and refuses to
+overwrite unmanaged edits. First-time setup can also select private absolute
+personal skill directories; those paths remain in the private profile, and their
+bounded contents are transferred to the same managed projection without entering
+the shared manifest.
+
+`session_environment` maps an uppercase variable name to an Infisical
+`secret_path` and `secret_key`, plus explicit client recipients and optional MCP
+names. These are references, not values. First-time setup records the chosen
+Infisical instance, identity, project, environment, and private credential-file
+reference outside the repository. A project declaring no session variables does
+not require Infisical.
 
 ## MCP declarations
 

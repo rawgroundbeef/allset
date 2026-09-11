@@ -23,7 +23,7 @@ def save(path, data):
 
 
 def prepare(meta, state):
-    """Install the current lockfile and record success only after the smoke test."""
+    """Prepare pinned tools, then run only explicitly declared compatibility setup."""
     status = {'state': 'preparing', 'base_sha': meta['base_sha'],
               'setup_token': meta['setup_token']}
     save(state / 'setup.json', status)
@@ -37,8 +37,9 @@ def prepare(meta, state):
             if meta.get('session_interface', 'herdr') != 'ssh': bootstrap.append('--with-herdr')
             run(bootstrap, stdout=log, stderr=subprocess.STDOUT)
             if meta.get('project_profile'):
-                for script in meta['project_profile']['setup_commands']:
-                    run(['bash', '-lc', script], cwd=meta['cwd'], stdout=log, stderr=subprocess.STDOUT)
+                if not meta['project_profile'].get('coding_only'):
+                    for script in meta['project_profile']['setup_commands']:
+                        run(['bash', '-lc', script], cwd=meta['cwd'], stdout=log, stderr=subprocess.STDOUT)
             else:
                 run(['bash', str(state / 'prepare.sh'), meta['cwd']],
                     stdout=log, stderr=subprocess.STDOUT)

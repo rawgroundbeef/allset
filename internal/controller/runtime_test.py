@@ -21,6 +21,10 @@ import project_shell
 import agent_auth
 import github_auth
 import infisical_context
+import onboarding
+import session_context
+import skills
+import worker
 from profiles import validate
 
 c = projects.c
@@ -259,6 +263,208 @@ class RuntimeTests(unittest.TestCase):
                    'template': None, 'box_environment': 'fixture', 'setup_commands': [], 'services': [], 'shell_only': True}
         self.assertEqual(validate(profile), profile)
         with self.assertRaises(ValueError): validate(dict(profile, infisical={'token': 'synthetic'}))
+
+    def test_coding_only_profile_requires_owned_safe_provider_environment(self):
+        profile = {'version': 2, 'name': 'dashboard', 'repository': 'example/dashboard', 'base': 'main',
+                   'template': None, 'box_environment': 'allset-dashboard-fixture', 'setup_commands': [],
+                   'services': [], 'preview_service': '', 'coding_only': True, 'clients': ['codex'],
+                   'provider_binding': {'provider': 'box', 'billing_scope': 'personal-org',
+                                        'environment': 'allset-dashboard-fixture', 'safe_for_third_parties': True,
+                                        'account_identity': {'email': 'box@example.test'}}}
+        self.assertEqual(validate(profile), profile)
+        broken = json.loads(json.dumps(profile)); broken['provider_binding']['safe_for_third_parties'] = False
+        with self.assertRaises(ValueError): validate(broken)
+
+    def test_coding_only_checkout_never_runs_app_or_fallback_setup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp); checkout = state / 'checkout'; checkout.mkdir()
+            meta = {'base_sha': 'abc123', 'setup_token': 'token', 'cwd': str(checkout),
+                    'session_interface': 'ssh', 'project_profile': {'coding_only': True, 'setup_commands': []}}
+            with patch.object(worker.subprocess, 'check_output', return_value='abc123\n'), \
+                 patch.object(worker, 'run') as run:
+                worker.prepare(meta, state)
+            self.assertEqual(len(run.call_args_list), 1)
+            self.assertEqual(run.call_args_list[0].args[0][0], 'bash')
+
+    def test_source_checkout_uses_only_the_selected_github_account_without_token_argv(self):
+        calls = []
+        def command(args, **kwargs):
+            calls.append((args, kwargs.get('env')))
+            if 'ls-remote' in args:
+                return types.SimpleNamespace(stdout='ref: refs/heads/main HEAD\n')
+            if 'rev-parse' in args:
+                return types.SimpleNamespace(stdout='abc123\n')
+            return types.SimpleNamespace(stdout='')
+        with tempfile.TemporaryDirectory() as tmp, patch.object(c, 'command', side_effect=command), \
+             patch.object(github_auth, 'run_native', return_value='selected-token'), \
+             patch.object(github_auth, 'verify_account'):
+            sha, _, _ = c.source_checkout('acme/dashboard', '', Path(tmp),
+                github={'provider': 'github-cli', 'account_login': 'fixture-user'}, clean=True)
+        self.assertEqual(sha, 'abc123')
+        self.assertNotIn('selected-token', ' '.join(str(arg) for args, _ in calls for arg in args))
+        fetch = next((args, env) for args, env in calls if 'fetch' in args)
+        self.assertEqual(fetch[1]['GH_TOKEN'], 'selected-token')
+        self.assertEqual(fetch[1]['GIT_CONFIG_GLOBAL'], os.devnull)
+
+    def test_skill_projection_preserves_supporting_files_and_rejects_edits(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); home = root / 'home'; checkout = root / 'checkout'
+            source = checkout / '.agents/skills/fixture'; source.mkdir(parents=True)
+            (source / 'SKILL.md').write_text('fixture'); (source / 'support.txt').write_text('support')
+            result = skills.apply(home, 'dashboard', checkout,
+                {'fixture': {'path': '.agents/skills/fixture', 'agents': ['codex', 'claude']}},
+                selected_clients=['codex'])
+            self.assertEqual(result['skills'], ['fixture'])
+            self.assertEqual((home / '.agents/skills/fixture/support.txt').read_text(), 'support')
+            self.assertFalse((home / '.claude/skills/fixture').exists())
+            linked = checkout / 'linked-skill'; linked.symlink_to(source, target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, 'symlink'):
+                skills.apply(home, 'dashboard', checkout,
+                    {'linked': {'path': 'linked-skill', 'agents': ['codex']}}, selected_clients=['codex'])
+            (home / '.agents/skills/fixture/SKILL.md').write_text('user edit')
+            with self.assertRaisesRegex(ValueError, 'unmanaged edits'):
+                skills.apply(home, 'dashboard', checkout,
+                    {'fixture': {'path': '.agents/skills/fixture', 'agents': ['codex', 'claude']}},
+                    selected_clients=['codex'])
+
+    def test_session_secret_delivery_selects_only_declared_values(self):
+        context = {'clients': ['codex'], 'infisical': True, 'session_environment': {
+            'FIXTURE_TOKEN': {'secret_path': '/allset', 'secret_key': 'TOKEN', 'agents': ['codex']}}}
+        binding = {'name': 'dashboard', 'infisical': {'instance': 'https://example.test',
+            'organization_id': 'org', 'project_id': 'project', 'principal_id': 'principal', 'environment': 'dev'}}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(session_context.Path, 'home', return_value=Path(tmp)), \
+             patch.object(session_context.infisical_context, 'token_environment', return_value={'INFISICAL_TOKEN': 'broker'}), \
+             patch.object(session_context.subprocess, 'run', return_value=types.SimpleNamespace(
+                 returncode=0, stdout=json.dumps([{'secretKey': 'TOKEN', 'secretValue': 'selected'},
+                                                  {'secretKey': 'OTHER', 'secretValue': 'excluded'}]))) as run:
+            directory = Path(session_context.__file__).resolve().parent
+            binding_path = directory / 'infisical-binding.json'
+            # Exercise the pure boundary with a temporary module directory through patched __file__.
+            module = Path(tmp) / 'session_context.py'; module.write_text('')
+            with patch.object(session_context, '__file__', str(module)):
+                binding_path = Path(tmp) / 'infisical-binding.json'; binding_path.write_text(json.dumps(binding))
+                env = session_context._secret_environment(context, 'codex')
+            self.assertEqual(env['FIXTURE_TOKEN'], 'selected')
+            self.assertNotIn('OTHER', env); self.assertNotIn('INFISICAL_TOKEN', env)
+            self.assertNotIn('selected', ' '.join(run.call_args.args[0]))
+            self.assertIn('--projectId=project', run.call_args.args[0])
+            self.assertIn('--env=dev', run.call_args.args[0])
+
+    def test_onboarding_reconciles_environment_timeout_and_records_safe_binding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); calls = []; listed = 0
+            class FakeBoxError(RuntimeError): pass
+            def box(*args):
+                nonlocal listed
+                calls.append(args)
+                if args[0] == 'status': return {'account': {'email': 'box@example.test'}}
+                if args[0] == 'limits': return {'fixture': True}
+                if args[:2] == ('env', 'list'):
+                    listed += 1
+                    return {'environments': [] if listed == 1 else [{'name': environment[0]}]}
+                if args[:2] == ('env', 'new'):
+                    environment.append(args[2]); raise subprocess.TimeoutExpired('box env new', 180)
+                if args[:2] == ('env', 'set'):
+                    return {'environment': {'name': environment[0], 'safeForThirdParties': True}}
+                raise AssertionError(args)
+            controller = types.SimpleNamespace(STATE=root, BOX=Path('/fake/box'), BoxCommandError=FakeBoxError,
+                                               box=box, check_allowance=lambda *args, **kwargs: None)
+            request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'},
+                       'clients': [{'client': 'codex', 'expected_account': 'work@example.test'}]}
+            environment = []
+            with patch('builtins.input', side_effect=['', '', 'personal-org', 'yes']):
+                profile, clients = onboarding.ensure_profile(controller, request)
+            self.assertEqual(clients, ['codex'])
+            self.assertTrue(profile['provider_binding']['safe_for_third_parties'])
+            self.assertEqual(sum(call[:2] == ('env', 'new') for call in calls), 1)
+            saved_journal = json.loads((root / 'projects/dashboard/onboarding.json').read_text())
+            self.assertEqual(saved_journal['stage'], 'profile-saved')
+            self.assertEqual(saved_journal['account_identity'], {'email': 'box@example.test'})
+            foreign = types.SimpleNamespace(box=lambda *args: {'account': {'email': 'other@example.test'}})
+            with self.assertRaisesRegex(ValueError, 'does not match'):
+                onboarding.verify_provider_binding(foreign, profile)
+
+    def test_interrupted_onboarding_rejects_a_different_box_identity(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            journal = root / 'projects/dashboard/onboarding.json'
+            journal.parent.mkdir(parents=True)
+            journal.write_text(json.dumps({
+                'version': 1, 'project': 'dashboard', 'repository': 'acme/dashboard', 'provider': 'box',
+                'stage': 'environment-created', 'environment': 'allset-dashboard-0123456789',
+                'billing_scope': 'personal-org', 'account_identity': {'email': 'first@example.test'},
+                'providers': {'codex': {'account_email': 'work@example.test'}},
+                'personal_skills': [], 'github': None, 'infisical': None,
+                'environment_create_attempted': True}))
+            journal.chmod(0o600)
+            controller = types.SimpleNamespace(
+                STATE=root, BOX=Path('/fake/box'), BoxCommandError=RuntimeError,
+                box=lambda *args: {'account': {'email': 'second@example.test'}} if args[0] == 'status' else {},
+                check_allowance=lambda *args, **kwargs: None)
+            request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'}}
+            with self.assertRaisesRegex(ValueError, 'interrupted onboarding journal'):
+                onboarding.ensure_profile(controller, request)
+
+    def test_verified_environment_stage_is_checked_without_repeating_mutation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); calls = []
+            journal = root / 'projects/dashboard/onboarding.json'
+            journal.parent.mkdir(parents=True)
+            journal.write_text(json.dumps({
+                'version': 1, 'project': 'dashboard', 'repository': 'acme/dashboard', 'provider': 'box',
+                'stage': 'environment-safe', 'environment': 'allset-dashboard-0123456789',
+                'billing_scope': 'personal-org', 'account_identity': {'email': 'box@example.test'},
+                'providers': {'codex': {'account_email': 'work@example.test'}},
+                'personal_skills': [], 'github': None, 'infisical': None,
+                'environment_create_attempted': True}))
+            journal.chmod(0o600)
+            def box(*args):
+                calls.append(args)
+                if args[0] == 'status': return {'account': {'email': 'box@example.test'}}
+                if args[0] == 'limits': return {}
+                if args[:2] == ('env', 'list'):
+                    return {'environments': [{'name': 'allset-dashboard-0123456789',
+                                              'safeForThirdParties': True}]}
+                raise AssertionError(args)
+            controller = types.SimpleNamespace(STATE=root, BOX=Path('/fake/box'), BoxCommandError=RuntimeError,
+                                               box=box, check_allowance=lambda *args, **kwargs: None)
+            request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'}}
+            profile, clients = onboarding.ensure_profile(controller, request)
+            self.assertEqual(clients, ['codex'])
+            self.assertEqual(profile['box_environment'], 'allset-dashboard-0123456789')
+            self.assertFalse(any(call[:2] == ('env', 'set') for call in calls))
+
+    def test_session_install_preserves_a_native_local_binary_behind_the_wrapper(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp); local = home / '.local/bin'; local.mkdir(parents=True)
+            command = local / 'codex'; command.write_bytes(b'\x00native-client'); command.chmod(0o700)
+            checkout = home / 'checkout'; checkout.mkdir()
+            with patch.object(session_context.Path, 'home', return_value=home):
+                context = session_context.install(['codex'], None, 'dashboard', str(checkout), {})
+            native = Path(context['native']['codex'])
+            self.assertEqual(native.read_bytes(), b'\x00native-client')
+            self.assertIn(session_context.MARKER, command.read_text())
+            self.assertNotEqual(native, command)
+
+    def test_session_launch_preserves_argv_cwd_and_uses_curated_environment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp); checkout = root / 'checkout'; child = checkout / 'nested'; child.mkdir(parents=True)
+            native = root / 'native-codex'; native.write_text('fixture')
+            context = {'project': 'dashboard', 'checkout': str(checkout), 'native': {'codex': str(native)},
+                       'clients': ['codex'], 'session_environment': {}, 'infisical': False}
+            module = root / 'session_context.py'; module.write_text('')
+            (root / 'context.json').write_text(json.dumps(context))
+            before = Path.cwd()
+            try:
+                os.chdir(child)
+                with patch.object(session_context, '__file__', str(module)), \
+                     patch.object(session_context.os, 'execve', side_effect=RuntimeError('exec')) as execute:
+                    with self.assertRaisesRegex(RuntimeError, 'exec'):
+                        session_context.main('codex', ['resume', '--last'])
+                self.assertEqual(execute.call_args.args[0], str(native))
+                self.assertEqual(execute.call_args.args[1], [str(native), 'resume', '--last'])
+            finally:
+                os.chdir(before)
 
 
 result = unittest.TextTestRunner().run(unittest.defaultTestLoader.loadTestsFromTestCase(RuntimeTests))

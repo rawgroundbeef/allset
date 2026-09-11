@@ -1,6 +1,7 @@
 # Remote session account and integration boundaries
 
-Status: preliminary controls for the corrected scope, 2026-09-11. Not executed.
+Status: controls implemented and exercised locally with synthetic boundaries on
+2026-09-11; real provider/account/session proof remains unexecuted.
 
 Actors are the developer, repository/integration/skill sources, external account
 and compute services, and concurrent AllSet/client processes. Assets are account
@@ -27,6 +28,10 @@ same-Unix-user processes. No new sandbox claim or permission relaxation is part
 of this slice. App service execution and preview routing were removed from
 scope; preserve their existing controls without adding new orchestration.
 
-Carry these controls into acceptance and implementation requirements. No live
-credential operation, provider mutation, or material residual-risk acceptance
-has occurred in this planning task.
+The implementation adds strict shared declarations, private identity-bound
+journals, no-ambient Box environment setup, timeout reconciliation, managed-file
+conflict checks, future-process launch wrappers, and scoped secret selection.
+Local fault tests cover the principal wrong-account, duplicate-mutation,
+unmanaged-edit, argv/cwd, and secret-filtering paths. No live credential
+operation, provider mutation, first-turn integration proof, or material residual-
+risk acceptance has occurred; those remain explicit UAT evidence gaps.

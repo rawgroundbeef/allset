@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/rawgroundbeef/allset/internal/config"
+	boxstrategy "github.com/rawgroundbeef/allset/internal/strategies/box"
 	"github.com/rawgroundbeef/allset/internal/strategy"
 )
 
@@ -92,7 +94,7 @@ func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) 
 	}
 }
 
-func TestBareSetupReviewsSavedBindingWithoutOpeningEnvironment(t *testing.T) {
+func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 	for _, args := range [][]string{nil, {"."}, {"open"}, {"open", "."}} {
 		a, out, plans := appFixture(t)
 		root := a.CurrentDir
@@ -118,8 +120,8 @@ func TestBareSetupReviewsSavedBindingWithoutOpeningEnvironment(t *testing.T) {
 			manifest.Backend != registry.Projects[0].Backend || strings.Join(manifest.Aliases, ",") != "joy" {
 			t.Fatal("saved project binding was not preserved", manifest, err)
 		}
-		if len(*plans) != 0 || input.Len() != 0 || !strings.Contains(out.String(), "How would you like to continue?") {
-			t.Fatal("setup skipped review or continued to a VM lifecycle operation")
+		if len(*plans) != 1 || (*plans)[0].Project != "dashboard" || !strings.Contains(out.String(), "How would you like to continue?") {
+			t.Fatal("setup skipped review or did not continue to the environment")
 		}
 		after, _ := os.ReadFile(a.ConfigPath)
 		if !bytes.Equal(before, after) || strings.Contains(out.String(), "SECRET") {
@@ -202,23 +204,23 @@ func TestOnlyInteractiveCurrentProjectOpenCreatesMissingManifest(t *testing.T) {
 	}
 }
 
-func TestMissingConfigEntersSetupAndReportsUnimplementedProviderPreparation(t *testing.T) {
+func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 	a, out, plans := appFixture(t)
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/project.git"), nil
 	}
-	a.In = strings.NewReader("1\n\n\n")
-	if code := a.Run(context.Background(), nil); code != 2 {
+	a.In = strings.NewReader("1\n\n\ncodex\nwork@example.test\n")
+	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
 	m, err := config.LoadProject(filepath.Join(a.CurrentDir, config.ProjectFilename))
 	if err != nil || m.Name != "project" || m.Repository != "https://github.com/new/project" {
 		t.Fatal(m, err)
 	}
-	if len(*plans) != 0 {
-		t.Fatal("incomplete setup launched a VM")
+	if len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
+		t.Fatal("guided setup did not dispatch onboarding", *plans)
 	}
-	if !strings.Contains(out.String(), "Compute provider") || !strings.Contains(out.String(), "allset config guide") ||
+	if !strings.Contains(out.String(), "Compute provider") || !strings.Contains(out.String(), "Coding session setup") ||
 		!strings.Contains(out.String(), "Account choices and credentials stay private") {
 		t.Fatal("guided setup or agent instructions were missing")
 	}
@@ -282,8 +284,8 @@ func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testi
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
-	if len(*plans) != 0 || strings.Join(s.calls, ",") != "validate" {
-		t.Fatal("setup planned or executed an environment operation", s.calls)
+	if len(*plans) != 1 || strings.Join(s.calls, ",") != "validate,plan" {
+		t.Fatal("setup did not continue into the environment", s.calls)
 	}
 	before, err := os.ReadFile(filepath.Join(a.CurrentDir, config.ProjectFilename))
 	if err != nil {
@@ -295,7 +297,7 @@ func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testi
 		t.Fatal(code, out.String())
 	}
 	after, _ := os.ReadFile(filepath.Join(a.CurrentDir, config.ProjectFilename))
-	if !bytes.Equal(before, after) || len(*plans) != 1 || (*plans)[0].Project != "demo" ||
+	if !bytes.Equal(before, after) || len(*plans) != 2 || (*plans)[1].Project != "demo" ||
 		(*plans)[0].Backend != "test-service" || strings.Contains(out.String(), "Compute provider") {
 		t.Fatal("reopen repeated setup")
 	}
@@ -305,5 +307,53 @@ func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testi
 		if code := a.Run(context.Background(), args); code != 0 || len(*plans) != 0 {
 			t.Fatal(args, code, out.String())
 		}
+	}
+}
+
+func TestInteractiveOpenResumesIncompleteOnboardingWithoutRepeatingChoices(t *testing.T) {
+	a, out, plans := appFixture(t)
+	if err := config.WriteProject(filepath.Join(a.CurrentDir, config.ProjectFilename), config.Manifest{
+		Version: 1, Project: config.Project{Name: "dashboard", Repository: "acme/dashboard", Backend: "box"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	backend := a.Strategies["box"].(boxstrategy.Strategy).Controller
+	write := func(path string, value any) {
+		t.Helper()
+		path = filepath.Join(backend.Root, path)
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := json.Marshal(value)
+		if err := os.WriteFile(path, raw, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("projects/dashboard/profile.json", map[string]any{"name": "dashboard", "repository": "acme/dashboard",
+		"coding_only": true, "clients": []string{"codex"}, "agent_profile": "dashboard-agents"})
+	write("projects/dashboard/onboarding.json", map[string]any{"project": "dashboard", "stage": "profile-saved"})
+	a.In = strings.NewReader("")
+	if code := a.Run(context.Background(), nil); code != 0 || len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
+		t.Fatal(code, out.String(), *plans)
+	}
+}
+
+func TestInteractiveOpenContinuesOnboardingAfterConfigurationOnlyInit(t *testing.T) {
+	a, out, plans := appFixture(t)
+	if err := os.Remove(filepath.Join(a.Strategies["box"].(boxstrategy.Strategy).Controller.Root,
+		"projects", "dashboard", "profile.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.WriteProject(filepath.Join(a.CurrentDir, config.ProjectFilename), config.Manifest{
+		Version: 1, Project: config.Project{Name: "dashboard", Repository: "acme/dashboard", Backend: "box"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	a.In = strings.NewReader("codex\nwork@example.test\n")
+	if code := a.Run(context.Background(), nil); code != 0 || len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
+		t.Fatal(code, out.String(), *plans)
+	}
+	if !strings.Contains(out.String(), "Coding session setup") {
+		t.Fatal("missing private onboarding choices", out.String())
 	}
 }

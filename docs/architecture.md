@@ -39,15 +39,15 @@ Malformed documents, unsupported fields, symlinks, and identity conflicts fail;
 they never fall through into inference or first-time provisioning.
 
 Absent a manifest, interactive current-project open enters configuration review
-and returns without running an environment operation. Saved registry bindings
+and, after approval, continues into guided environment onboarding. Saved registry bindings
 are displayed for an explicit choice before creating the file. The review also
 offers a configuration-only prompt for the user’s coding agent and cancellation.
-Explicit `init` reopens the review for an existing manifest without overwriting it. Named shortcuts and noninteractive calls keep
+Explicit `init` reopens the configuration-only review without overwriting it. Named shortcuts and noninteractive calls keep
 registry inference for continuity. An unknown repository enters init only during
 interactive open. Init creates a
 strict file atomically, without clobbering files or copying accounts. Dry runs,
-status, doctor, config inspection, cancellation, and validation never provision
-or start the init flow. Config creation does not imply environment readiness.
+status, doctor, config inspection, cancellation, dry-run, and validation never
+provision or initiate sign-in. Config creation alone does not imply readiness.
 
 Global registry v1/v2 documents normalize read-only to v3. The v1 bespoke backend
 maps to Box; v2 terminal fields are accepted only as historical data and discarded.
@@ -123,11 +123,21 @@ client. Because the command returns, its attached credential-cache monitor does
 not continue running; native sign-in and the bundled controller remain the
 account owners. Remote refresh durability across VM stop remains a limitation.
 
-A new manifest cannot yet bootstrap a new project's full local provider profile.
-Init records the project choices and reports incomplete setup. Next implement
-native requirements for tools/setup/services, per-user account binding and
-supported login flows, plus idempotent apply and readiness probes. Do not accept
-fields as implemented before their lifecycle is implemented and verified.
+A new manifest can bootstrap a coding-only private profile without an existing
+snapshot or app profile. The developer explicitly selects client identities and
+Box billing scope. A unique journaled environment is configured with native
+credential injection disabled before a small, bounded-lifetime machine is created.
+Unknown provider outcomes reconcile the recorded environment before retry.
+
+Repository-relative skills are copied with supporting files into selected native
+client scopes under a digest journal. MCP declarations retain their native managed
+file journal. Selected session variables are fetched from the private Infisical
+binding at client launch and placed only in the future client process environment;
+broker credentials are removed before exec. AllSet-owned client entry points
+preserve cwd, argv, TTY, signals, exit status, and native resume semantics by
+replacing the process with the resolved native binary. Existing conversations are
+not restarted. Coding-only preparation does not run application install, service,
+preview, or database commands.
 
 Existing provider allowance, creation lock, timeout reconciliation, filesystem
 restoration, project ownership, and active-work preservation checks remain in the
@@ -140,13 +150,13 @@ Local tests cover discovery/root boundaries, init without credentials, cancellat
 noninteractive/dry-run guarantees, credential-bearing origins, malformed/foreign
 manifests, old-format migration, unsupported strategies, and current-terminal
 routing. Runtime tests execute the actual embedded Python source against synthetic
-state and failure responses. The optional packaged-container check runs a release
-archive offline, without the repository or host home, using simulated Box, SSH and
-Herdr boundaries. It exercises actual repository checks, synthetic credential
-restore and native MCP file projection. It does not prove cloud provisioning,
-real sign-ins, tool installation or filesystem restoration. Full new-project
-provisioning, three apps/previews, and parallel agent worktree isolation remain
-outstanding. See PROGRESS.md for current evidence.
+state and failure responses, including provider-environment reconciliation, skill
+conflicts, and scoped launch-environment selection. The optional packaged-container
+check runs a release archive offline, without the repository or host home, using
+simulated Box, SSH and Herdr boundaries. It exercises actual repository checks,
+synthetic credential restore, native MCP projection, and workspace reuse. Neither
+test proves cloud provisioning, real sign-ins, tool installation, filesystem
+restoration, or a model/tool response. See PROGRESS.md for current evidence.
 
 ## Individual agent sign-in
 

@@ -1,5 +1,58 @@
 # AllSet progress
 
+## Remote coding session onboarding implementation — 2026-09-11
+
+- Implemented the approved slice from planning commit `79f0f87` in the fresh
+  worktree `/private/tmp/allset-guided-onboarding-impl-20260911` on
+  `feat/guided-onboarding-implementation`. The occupied planning worktree and
+  `feat/guided-onboarding` branch were preserved unchanged.
+- Bare interactive `allset` now continues from shared configuration review into
+  deliberate coding-client/account choices, private Box scope/account binding,
+  bounded compute consent, coding-only checkout preparation, native sign-ins,
+  MCP/skill projection, scoped Infisical session values, and the selected caller
+  handoff. Explicit `allset init`, inspection, status, diagnosis, and dry-run do
+  not enter this mutation path.
+- Shared `.allset` contracts now support strict repository-relative skills,
+  session environment references, and explicit native HTTP MCP OAuth. Private
+  profiles retain provider/client/GitHub/Infisical choices. The onboarding journal
+  pins the repository, random owned environment, Box billing scope and account
+  identity, and reconciles an uncertain native environment-creation result before
+  retry. Ambient Box credential injection is disabled and verified before compute.
+- Coding-only setup runs the pinned tool bootstrap and repository access checks,
+  never app dependency/setup fallbacks, services, previews, or database work.
+  Managed skill copies include supporting files and refuse symlinks, oversize
+  sources, collisions, and user edits. Future selected client processes receive
+  only declared Infisical values; broker variables are removed, native argv/cwd
+  and process semantics are preserved, and existing conversations are not restarted.
+- **Local/mock:** `go test -race ./...`, `go vet ./...`, CLI build, Python syntax,
+  schema parsing, and diff whitespace passed from the implementation root. Fault
+  tests cover continuous and resumed entry, configuration-only init, coding-only
+  setup exclusion, Box account mismatch and timed-out environment reconciliation,
+  native executable preservation, skill conflicts/supporting files, and scoped
+  launch environment/argv/cwd behavior.
+- **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built. The Linux
+  amd64 archive passed the network-disabled container proof: continuous setup and
+  cancellation guards, bundled runtime, synthetic login restore, native MCP
+  projection, terminal display, workspace reuse, work collection, and ownership
+  failures. Box, SSH, Herdr, native accounts, and MCPs were simulated.
+- Installed read-only native versions inspected: Box `0.1.228-ascii-prod1`, Codex
+  `0.154.0`, Claude Code `2.1.268`, Cursor Agent `2026.08.04-aaa8809`, and
+  Infisical `0.43.121`. No VM, provider environment, browser login, credential,
+  release, or installed AllSet binary was changed.
+- **Self-review, not independent:** domain, provider/account, credential, managed-
+  file, recovery, native process, performance, maintainability, and test boundaries
+  were checked using the repository review guidance. Findings fixed before final
+  gates included preserving native local client binaries, pinning Box identity
+  across interrupted onboarding, pre-validating private bindings before mutation,
+  and allowing a manifest created by configuration-only init to continue later.
+- **Unverified:** real Box response shapes and environment safety, cloud creation/
+  restoration, browser/native account flows, model response, MCP call, skill
+  invocation, secret consumption, active-conversation behavior, and cold/warm
+  timing. The approved demo pass criterion is therefore not yet claimed.
+- Next: with explicit Box/account authorization and disposable scope, execute the
+  real first-turn, interruption, warm-return, and cold-resume checks in
+  [.planning/0005-guided-onboarding/uat.md](.planning/0005-guided-onboarding/uat.md).
+
 ## Remote coding session onboarding planning — 2026-09-11
 
 - User accepted a continuous bare-`allset` setup/open flow, including developers

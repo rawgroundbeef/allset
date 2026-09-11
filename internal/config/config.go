@@ -30,11 +30,13 @@ type File struct {
 // Project declares a repository and compute service. The caller owns its terminal.
 // Credentials and observed runtime state belong outside this registration.
 type Project struct {
-	Name       string         `json:"name"`
-	Aliases    []string       `json:"aliases,omitempty"`
-	Repository string         `json:"repository"`
-	Backend    string         `json:"backend"`
-	MCPs       map[string]MCP `json:"mcps,omitzero"`
+	Name               string                     `json:"name"`
+	Aliases            []string                   `json:"aliases,omitempty"`
+	Repository         string                     `json:"repository"`
+	Backend            string                     `json:"backend"`
+	MCPs               map[string]MCP             `json:"mcps,omitzero"`
+	Skills             map[string]Skill           `json:"skills,omitzero"`
+	SessionEnvironment map[string]SessionVariable `json:"session_environment,omitzero"`
 }
 
 func ValidID(s string) bool { return identifier.MatchString(s) }
@@ -92,6 +94,9 @@ func (f File) Validate() error {
 	names, repositories := map[string]bool{}, map[string]bool{}
 	for _, p := range f.Projects {
 		if err := ValidateMCPs(p.MCPs); err != nil {
+			return err
+		}
+		if err := ValidateSessionRequirements(p.Skills, p.SessionEnvironment, p.MCPs); err != nil {
 			return err
 		}
 		if !ValidID(p.Backend) || p.Backend == "box-herdr" {

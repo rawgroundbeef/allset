@@ -14,6 +14,7 @@ import (
 	"github.com/rawgroundbeef/allset/internal/config"
 	"github.com/rawgroundbeef/allset/internal/execution"
 	boxapi "github.com/rawgroundbeef/allset/internal/providers/box"
+	"github.com/rawgroundbeef/allset/internal/strategy"
 )
 
 func put(t *testing.T, root, path string, value any) {
@@ -117,6 +118,46 @@ func TestPlanTargetsIntendedProjectAndCollectOwnership(t *testing.T) {
 	put(t, b.Root, "tasks/shell-dashboard/task.json", map[string]string{"project": "shop-app", "role": "shell"})
 	if _, err := b.Plan(p, "collect", "", 7200, "herdr"); err == nil {
 		t.Fatal("collected another project's work")
+	}
+}
+
+func TestOnboardingPlanAllowsOnlyMissingOrJournaledPrivateSetup(t *testing.T) {
+	b := Backend{Root: t.TempDir(), Python: "/usr/bin/python3"}
+	p := config.Project{Name: "dashboard", Repository: "acme/dashboard", Backend: "box"}
+	plan, err := b.OnboardingPlan(p, []strategy.ClientBinding{{Client: "codex", ExpectedAccount: "work@example.test"}}, 7200, "none")
+	if err != nil || plan.Operation != "onboard" || !plan.Interactive || !strings.Contains(strings.Join(plan.Args, " "), `"client":"codex"`) {
+		t.Fatal(plan, err)
+	}
+	if _, err := b.OnboardingPlan(p, nil, 7200, "none"); err == nil {
+		t.Fatal("missing choices and journal accepted")
+	}
+	put(t, b.Root, "projects/dashboard/onboarding.json", map[string]any{"project": "dashboard", "stage": "environment-intent"})
+	if _, err := b.OnboardingPlan(p, nil, 7200, "none"); err != nil {
+		t.Fatal("journaled retry rejected", err)
+	}
+	put(t, b.Root, "projects/dashboard/profile.json", map[string]any{"name": "dashboard", "repository": "foreign/repo", "coding_only": true})
+	if _, err := b.OnboardingPlan(p, nil, 7200, "none"); err == nil {
+		t.Fatal("foreign private profile accepted")
+	}
+}
+
+func TestOpenPlanCarriesSkillAndSessionRequirementsWithoutMCPs(t *testing.T) {
+	b := Backend{Root: t.TempDir(), Python: "/usr/bin/python3"}
+	p := config.Project{Name: "dashboard", Repository: "acme/dashboard", Backend: "box",
+		Skills: map[string]config.Skill{"fixture": {Path: ".agents/skills/fixture"}},
+		SessionEnvironment: map[string]config.SessionVariable{"WORK_TOKEN": {
+			SecretPath: "/allset", SecretKey: "WORK_TOKEN", Agents: []string{"codex"},
+		}}}
+	put(t, b.Root, "projects/dashboard/profile.json", map[string]any{
+		"name": "dashboard", "repository": "acme/dashboard", "agent_profile": "dashboard-agents",
+	})
+	plan, err := b.Plan(p, "open", "", 7200, "none")
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plan.Args, " ")
+	if !strings.Contains(joined, `"skills"`) || !strings.Contains(joined, `"session_environment"`) {
+		t.Fatal("open plan dropped session requirements", joined)
 	}
 }
 

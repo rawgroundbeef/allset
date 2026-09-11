@@ -22,7 +22,7 @@ def github_repository(value):
 # This helper runs on the project Box. Native gh resolves the configured
 # account; no credential is read back, copied into Git config or logged.
 REMOTE_SCRIPT = r'''import json,os,shlex,shutil,subprocess,sys,urllib.parse
-cwd,repository,provider=sys.argv[1:]
+cwd,repository,provider,require_access=sys.argv[1:]
 expected='https://github.com/'+repository+'.git'
 def git(*args,check=True):
  """Run noninteractive Git without leaking credential-helper output on failure."""
@@ -71,13 +71,20 @@ if provider in ('box','github-cli'):
    '. Check the configured project GitHub account before opening an agent. No checkout was changed.')
  print(json.dumps({'repository':repository,'origin_configured':True,'github_verified':True}))
 elif provider=='unconfigured':
- print(json.dumps({'repository':repository,'origin_configured':True,'github_verified':False}))
+ # A clean coding-only environment may use a public repository without an
+ # unrelated GitHub login. Prove credential-free access before readiness.
+ if require_access=='true':
+  probe=subprocess.run(['git','-c','credential.helper=','ls-remote','--exit-code',expected,'HEAD'],
+    capture_output=True,text=True,env={**os.environ,'GIT_TERMINAL_PROMPT':'0'},timeout=60)
+  if probe.returncode:
+   raise SystemExit('Repository needs an explicit GitHub account binding; public access was not verified.')
+ print(json.dumps({'repository':repository,'origin_configured':True,'github_verified':require_access=='true'}))
 else:
  raise SystemExit('Unsupported project GitHub authentication provider')
 '''
 
 
-def configure(remote, meta, cwd, repository, github=None):
+def configure(remote, meta, cwd, repository, github=None, *, require_access=False):
     """Restore a missing origin and optionally require native Box GitHub access before declaring readiness.
 
     An existing foreign origin is never overwritten. Native token-bearing Box
@@ -90,5 +97,6 @@ def configure(remote, meta, cwd, repository, github=None):
     provider = github['provider'] if github else 'unconfigured'
     if provider not in ('box', 'github-cli', 'unconfigured'):
         raise ValueError('Unsupported project GitHub authentication provider')
-    result = remote(meta, shlex.join(['python3', '-c', REMOTE_SCRIPT, cwd, repo, provider]), timeout=75)
+    result = remote(meta, shlex.join(['python3', '-c', REMOTE_SCRIPT, cwd, repo, provider,
+                                     'true' if require_access else 'false']), timeout=75)
     return json.loads(result)

@@ -19,6 +19,7 @@ type MCP struct {
 	URL               string   `json:"url,omitempty"`
 	EnvVars           []string `json:"env_vars,omitempty"`
 	BearerTokenEnvVar string   `json:"bearer_token_env_var,omitempty"`
+	OAuth             *bool    `json:"oauth,omitempty"`
 	Agents            []string `json:"agents,omitempty"`
 }
 
@@ -34,12 +35,11 @@ func ValidateMCPs(servers map[string]MCP) error {
 			return errors.New("MCP names must be lowercase identifiers")
 		}
 		fail := func(message string) error { return fmt.Errorf("MCP %s: %s", name, message) }
-		seen := map[string]bool{}
-		for _, agent := range m.Agents {
-			if (agent != "codex" && agent != "claude" && agent != "cursor") || seen[agent] {
-				return fail("agents must uniquely select codex, claude, or cursor")
-			}
-			seen[agent] = true
+		if err := validateAgents(m.Agents); err != nil {
+			return fail(err.Error())
+		}
+		if m.OAuth != nil && !*m.OAuth {
+			return fail("oauth may only be set to true; omit it otherwise")
 		}
 		if m.Preset != "" {
 			if m.Preset != "trigger" {
@@ -48,7 +48,7 @@ func ValidateMCPs(servers map[string]MCP) error {
 			if !triggerRef.MatchString(m.ProjectRef) {
 				return fail("Trigger requires an explicit project_ref from trigger.config.ts")
 			}
-			if m.Command != "" || m.URL != "" || len(m.Args) > 0 || len(m.EnvVars) > 0 || m.BearerTokenEnvVar != "" {
+			if m.Command != "" || m.URL != "" || len(m.Args) > 0 || len(m.EnvVars) > 0 || m.BearerTokenEnvVar != "" || m.OAuth != nil {
 				return fail("a preset cannot be mixed with custom transport or authentication")
 			}
 			continue
@@ -73,7 +73,13 @@ func ValidateMCPs(servers map[string]MCP) error {
 			if len(m.Args) > 0 || len(m.EnvVars) > 0 {
 				return fail("args and env_vars require a stdio command")
 			}
+			if m.OAuth != nil && m.BearerTokenEnvVar != "" {
+				return fail("choose native OAuth or a bearer-token environment reference, not both")
+			}
 		} else {
+			if m.OAuth != nil {
+				return fail("oauth requires an HTTP URL")
+			}
 			if strings.ContainsAny(m.Command, "\x00\r\n") || strings.TrimSpace(m.Command) != m.Command {
 				return fail("invalid server command")
 			}

@@ -42,7 +42,12 @@ def project(name):
     """Read an explicit project profile, never infer an Infisical login from the shell."""
     if not name or Path(name).name != name:
         raise ValueError('Use an installed project name')
-    return validate(json.loads((PROJECTS / name / 'profile.json').read_text()))
+    profile = validate(json.loads((PROJECTS / name / 'profile.json').read_text()))
+    binding = profile.get('provider_binding') or {}
+    if binding:
+        from onboarding import verify_provider_binding
+        verify_provider_binding(c, profile)
+    return profile
 
 
 @contextlib.contextmanager
@@ -177,7 +182,9 @@ def ensure_project(profile, ttl, *, prepare_apps=True, reconcile_agents=True, pr
         c.save(meta)
         try:
             progress.stage('machine', 'Starting your machine', 'Creating the project environment')
-            c.create(meta, ttl, profile['template'], profile['box_environment'])
+            c.create(meta, ttl, profile['template'], profile['box_environment'],
+                     no_ambient=(profile.get('provider_binding') or {}).get('safe_for_third_parties') is True,
+                     billing_scope=(profile.get('provider_binding') or {}).get('billing_scope'))
         finally:
             if meta.get('machine_id'):
                 atomic(record, {'task_id': meta['task_id'], 'machine_id': meta['machine_id']})
@@ -227,7 +234,9 @@ def start_task(profile, owner, name, prompt, base):
             'base_repo': owner.get('base_repo', '/home/user/projects/' + profile['name'] + '/source'),
             **{k: owner[k] for k in ('machine_id', 'ssh_alias', 'ip', 'archive_after', 'herdr_profile_id')}}
     c.save(meta)
-    sha, bundle, url = c.source_checkout(profile['repository'], base, c.STATE / 'tasks' / task_id)
+    sha, bundle, url = c.source_checkout(profile['repository'], base, c.STATE / 'tasks' / task_id,
+                                         github=profile.get('github') if profile.get('coding_only') else None,
+                                         clean=profile.get('coding_only') is True)
     meta.update(base_sha=sha, repository=url); c.save(meta)
     try:
         c.configure_task(meta, bundle)

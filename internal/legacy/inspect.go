@@ -27,24 +27,28 @@ type ServiceBinding struct {
 }
 
 type ProfileInspection struct {
-	Kind                string            `json:"kind"`
-	Project             config.Project    `json:"registration"`
-	ProfilePath         string            `json:"profile_path"`
-	Owner               string            `json:"configuration_owner"`
-	RuntimeRevision     string            `json:"runtime_revision"`
-	AgentAccountProfile string            `json:"agent_account_profile,omitempty"`
-	Infisical           *InfisicalBinding `json:"infisical"`
-	Base                string            `json:"base,omitempty"`
-	Template            string            `json:"template,omitempty"`
-	BoxEnvironment      string            `json:"box_environment,omitempty"`
-	ShellOnly           bool              `json:"shell_only"`
-	SetupCommandCount   int               `json:"setup_command_count"`
-	Services            []ServiceBinding  `json:"services"`
-	PreviewDomain       string            `json:"preview_domain,omitempty"`
-	PreviewService      string            `json:"preview_service,omitempty"`
-	GitHubProvider      string            `json:"github_provider,omitempty"`
-	ReadinessChecked    bool              `json:"readiness_checked"`
-	Omitted             []string          `json:"omitted"`
+	Kind                 string            `json:"kind"`
+	Project              config.Project    `json:"registration"`
+	ProfilePath          string            `json:"profile_path"`
+	Owner                string            `json:"configuration_owner"`
+	RuntimeRevision      string            `json:"runtime_revision"`
+	AgentAccountProfile  string            `json:"agent_account_profile,omitempty"`
+	SelectedClients      []string          `json:"selected_clients,omitempty"`
+	OnboardingState      string            `json:"onboarding_state,omitempty"`
+	DeclaredSkillCount   int               `json:"declared_skill_count"`
+	SessionVariableCount int               `json:"session_variable_count"`
+	Infisical            *InfisicalBinding `json:"infisical"`
+	Base                 string            `json:"base,omitempty"`
+	Template             string            `json:"template,omitempty"`
+	BoxEnvironment       string            `json:"box_environment,omitempty"`
+	ShellOnly            bool              `json:"shell_only"`
+	SetupCommandCount    int               `json:"setup_command_count"`
+	Services             []ServiceBinding  `json:"services"`
+	PreviewDomain        string            `json:"preview_domain,omitempty"`
+	PreviewService       string            `json:"preview_service,omitempty"`
+	GitHubProvider       string            `json:"github_provider,omitempty"`
+	ReadinessChecked     bool              `json:"readiness_checked"`
+	Omitted              []string          `json:"omitted"`
 }
 
 // Inspect reads only the registered profile. It never opens a credential reference,
@@ -54,6 +58,7 @@ func (b Backend) Inspect(p config.Project) (ProfileInspection, error) {
 	view := ProfileInspection{Kind: "project-configuration-inspection", Project: p,
 		ProfilePath: filepath.Join(b.Root, "projects", p.Name, "profile.json"),
 		Owner:       "allset-private-profile", RuntimeRevision: controller.Revision, Services: []ServiceBinding{},
+		DeclaredSkillCount: len(p.Skills), SessionVariableCount: len(p.SessionEnvironment),
 		Omitted: []string{"credential values and account caches", "setup and service command bodies", "environment values", "runtime state", "unrecognized profile fields"}}
 	profile, err := b.CheckBinding(p)
 	if err != nil {
@@ -69,11 +74,20 @@ func (b Backend) Inspect(p config.Project) (ProfileInspection, error) {
 		Services       []ServiceBinding  `json:"services"`
 		PreviewDomain  string            `json:"preview_domain"`
 		PreviewService string            `json:"preview_service"`
+		Clients        []string          `json:"clients"`
 	}
 	if err := config.ReadJSON(view.ProfilePath, &metadata, false); err != nil {
 		return view, err
 	}
 	view.AgentAccountProfile, view.Infisical = profile.AgentProfile, metadata.Infisical
+	view.SelectedClients = metadata.Clients
+	if pending, pendingErr := b.OnboardingPending(p); pendingErr == nil && profile.CodingOnly {
+		if pending {
+			view.OnboardingState = "pending"
+		} else {
+			view.OnboardingState = "complete"
+		}
+	}
 	view.Base, view.Template, view.BoxEnvironment = metadata.Base, metadata.Template, metadata.BoxEnvironment
 	view.ShellOnly, view.SetupCommandCount = metadata.ShellOnly, len(metadata.SetupCommands)
 	if metadata.Services != nil {

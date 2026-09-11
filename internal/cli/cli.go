@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -74,10 +75,10 @@ No terminal setting belongs in project config. No client takeover.
 Projects/status/doctor and dry-run accept --json. Doctor exits 2 for incomplete
 checks, 1 for failures. --config PATH must precede the command.
 
-Without .allset, interactive open reviews project setup and returns without opening.
-Choose terminal guidance, a prompt for your coding agent, or cancel. Saved bindings
-are shown for review. Run allset again to open; allset init reopens setup anytime.
-Read-only commands and dry-run never create configuration.
+Without .allset, interactive open reviews shared settings, asks for selected coding
+clients and their intended accounts, then continues into the private Box setup and
+native sign-in flow. Existing valid setup is reused. Explicit allset init only reviews
+configuration. Read-only commands and dry-run never create configuration or sign in.
 
 Box is the first compute backend. Its current workspace strategy delegates setup
 and sign-ins to the bundled controller; Python remains required for that adapter.
@@ -384,9 +385,40 @@ func (a App) Run(ctx context.Context, args []string) int {
 			return a.fail(locationErr)
 		}
 		if location.ManifestPath == "" {
-			// A first-run setup is the same configuration-only operation as
-			// explicit init. It must never fall through into a VM lifecycle plan.
-			return a.initCommand(ctx, nil)
+			p, reader, setupErr := a.initialize(ctx, f, nil)
+			if errors.Is(setupErr, errSetupHandoff) {
+				return 0
+			}
+			if setupErr != nil {
+				return a.fail(setupErr)
+			}
+			backend, lookupErr := a.Strategies.Lookup(p.Backend)
+			if lookupErr != nil {
+				return a.fail(lookupErr)
+			}
+			var plan execution.Plan
+			if validateErr := backend.Validate(p); validateErr == nil {
+				plan, setupErr = backend.Plan(p, "open", "", ttl, attach)
+			} else if onboarder, ok := backend.(strategy.Onboarder); ok {
+				var clients []strategy.ClientBinding
+				clients, setupErr = a.onboardingClients(reader, p)
+				if setupErr == nil {
+					plan, setupErr = onboarder.OnboardingPlan(p, clients, ttl, attach)
+				}
+			} else {
+				setupErr = validateErr
+			}
+			if setupErr != nil {
+				return a.fail(setupErr)
+			}
+			if a.Exec == nil {
+				return a.fail(errors.New("interactive executor is unavailable"))
+			}
+			fmt.Fprintf(a.Out, "%s · onboarding\n", p.Name)
+			if setupErr = a.Exec(plan); setupErr != nil {
+				return a.fail(setupErr)
+			}
+			return 0
 		}
 	}
 	if err != nil {
@@ -396,8 +428,31 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if err != nil {
 		return a.fail(err)
 	}
-	if err := backend.Validate(p); err != nil {
-		return a.fail(err)
+	var recoveryPlan *execution.Plan
+	if validateErr := backend.Validate(p); validateErr != nil {
+		if operation == "open" && a.Interactive && !dry && !*asJSON {
+			if onboarder, ok := backend.(strategy.Onboarder); ok {
+				plan, planErr := onboarder.OnboardingPlan(p, nil, ttl, attach)
+				if errors.Is(planErr, strategy.ErrOnboardingChoicesRequired) {
+					if a.In == nil {
+						return a.fail(errors.New("first-time onboarding needs an interactive terminal"))
+					}
+					clients, choicesErr := a.onboardingClients(bufio.NewReader(a.In), p)
+					if choicesErr != nil {
+						return a.fail(choicesErr)
+					}
+					plan, planErr = onboarder.OnboardingPlan(p, clients, ttl, attach)
+				}
+				if planErr != nil {
+					return a.fail(planErr)
+				}
+				recoveryPlan = &plan
+			} else {
+				return a.fail(validateErr)
+			}
+		} else {
+			return a.fail(validateErr)
+		}
 	}
 	switch operation {
 	case "status":
@@ -435,9 +490,14 @@ func (a App) Run(ctx context.Context, args []string) int {
 			return 1
 		}
 	}
-	plan, err := backend.Plan(p, operation, agent, ttl, attach)
-	if err != nil {
-		return a.fail(err)
+	var plan execution.Plan
+	if recoveryPlan != nil {
+		plan = *recoveryPlan
+	} else {
+		plan, err = backend.Plan(p, operation, agent, ttl, attach)
+		if err != nil {
+			return a.fail(err)
+		}
 	}
 	if dry {
 		if *asJSON {
