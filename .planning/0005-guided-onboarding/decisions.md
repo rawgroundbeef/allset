@@ -94,6 +94,10 @@ verified. Before Box setup, state that coding-client sign-in follows environment
 preparation so the next prompt does not look like a missing authentication step.
 Use the personal Box billing scope by default, show it with the account and
 machine terms, and ask only for the environment-creation mutation.
+Creation confirmation defaults to Yes (`[Y/n]`): Enter accepts the displayed
+terms in this explicitly initiated setup flow. `n`, Ctrl-C, or closed input
+cancels before environment creation; resuming a recorded operation still reuses
+its original consent and reconciliation path.
 
 ## Superseded planning
 

@@ -270,7 +270,7 @@ def ensure_profile(controller, request):
     validate(profile)
     if infisical is not None:
         credential(profile)
-    if not journal and input('Create the project environment? [y/N]: ').strip().lower() not in ('y', 'yes'):
+    if not journal and input('Create the project environment? [Y/n]: ').strip().lower() not in ('', 'y', 'yes'):
         raise ValueError('onboarding cancelled before provider mutation')
 
     if not journal:

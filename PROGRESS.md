@@ -2,6 +2,14 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- Creation confirmation now defaults to Yes (`[Y/n]`) after the account, billing,
+  and machine terms are displayed. **Local/mock:** Enter proceeds through the
+  existing creation/reconciliation test; `n`, invalid input, EOF, and Ctrl-C make
+  no environment/profile/journal writes. Race tests, vet, and CLI build passed.
+  The user's subsequent run created the `hello-world` Box. **Real provider
+  read-only:** its saved machine ID matches a live idle Box, while onboarding is
+  still `profile-saved` and all three agent identities/caches remain empty. This
+  proves compute exists, not completed preparation or coding-client authentication.
 - Fixed a live Box status mismatch: Box `0.1.228` returns the signed-in email in
   `account.identifier` with `loginState: active`. Onboarding now normalizes that
   field into the private email binding, rejects inactive/invalid/conflicting

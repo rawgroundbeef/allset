@@ -433,9 +433,10 @@ class RuntimeTests(unittest.TestCase):
             environment = []
             output = io.StringIO()
             with patch.object(onboarding, '_public_repository', return_value=True), \
-                    patch('builtins.input', side_effect=['yes']), \
+                    patch('builtins.input', side_effect=['']) as confirm, \
                     contextlib.redirect_stdout(output):
                 profile, clients = onboarding.ensure_profile(controller, request)
+            confirm.assert_called_once_with('Create the project environment? [Y/n]: ')
             self.assertEqual(clients, ['codex'])
             self.assertIn('Next: prepare Box, then open browser sign-in for Codex.', output.getvalue())
             self.assertNotIn('Personal skill', output.getvalue())
@@ -454,6 +455,29 @@ class RuntimeTests(unittest.TestCase):
             foreign = types.SimpleNamespace(box=lambda *args: {'account': {'email': 'other@example.test'}})
             with self.assertRaisesRegex(ValueError, 'does not match'):
                 onboarding.verify_provider_binding(foreign, profile)
+
+    def test_onboarding_decline_or_interruption_does_not_create_environment(self):
+        for answer in ('n', 'no', 'invalid', EOFError(), KeyboardInterrupt()):
+            with self.subTest(answer=answer), tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ):
+                root = Path(tmp)
+                calls = []
+                def box(*args):
+                    calls.append(args)
+                    if args == ('status', '--org', 'personal'):
+                        return {'account': {'identifier': 'box@example.test', 'loginState': 'active'}}
+                    if args == ('limits', '--org', 'personal'):
+                        return {}
+                    raise AssertionError('Unexpected provider mutation: ' + str(args))
+                controller = types.SimpleNamespace(STATE=root, box=box, check_allowance=lambda *args, **kwargs: None)
+                request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'},
+                           'clients': [{'client': 'codex'}]}
+                expected_error = type(answer) if isinstance(answer, BaseException) else ValueError
+                with patch.object(onboarding, '_public_repository', return_value=True), \
+                        patch('builtins.input', side_effect=[answer]), contextlib.redirect_stdout(io.StringIO()), \
+                        self.assertRaises(expected_error):
+                    onboarding.ensure_profile(controller, request)
+                self.assertEqual(calls, [('status', '--org', 'personal'), ('limits', '--org', 'personal')])
+                self.assertEqual(list(root.iterdir()), [])
 
     def test_public_repository_probe_ignores_ambient_credentials(self):
         completed = types.SimpleNamespace(returncode=0)
