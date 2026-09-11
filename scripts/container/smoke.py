@@ -136,32 +136,32 @@ unfamiliar = home / 'unfamiliar'
 unfamiliar.mkdir()
 subprocess.run(['git', 'init', '--quiet', str(unfamiliar)], check=True)
 subprocess.run(['git', '-C', str(unfamiliar), 'remote', 'add', 'origin', 'https://github.com/example/unfamiliar.git'], check=True)
-output = cli(cwd=unfamiliar, terminal=True, answers='1\n\n\ninvalid\n', ok=False, contains='coding clients must uniquely select')
-assert 'Coding session setup' in output and '1/2 Project name' in output
+output = cli(cwd=unfamiliar, terminal=True, answers='\n\ninvalid\n', ok=False, contains='coding clients must uniquely select')
+assert 'Coding tools' in output and 'Project name' in output and 'How would you like to continue?' not in output
 assert json.loads((unfamiliar / '.allset').read_text())['name'] == 'unfamiliar'
 assert not cache.exists() and not calls()
 print('PASS: unfamiliar repo enters continuous onboarding; invalid private choices do not contact providers', flush=True)
 
 assert not (checkout / '.allset').exists()
 before_registry = (home / '.config/allset/config.json').read_bytes()
-for answer in ('2\n', '3\n'):
-    cli(cwd=checkout, terminal=True, answers=answer, ok=answer.startswith('2'), contains='left unchanged')
+for answer in ('n\n', 'invalid\nn\n'):
+    cli(cwd=checkout, terminal=True, answers=answer, ok=False, contains='left unchanged')
     assert not (checkout / '.allset').exists() and not cache.exists() and not calls()
 assert not (home / '.codex/auth.json').exists(), 'Cancelled setup touched an agent login'
-output = cli('--attach', 'none', cwd=checkout, terminal=True, answers='1\n', contains='Workspace prepared')
+output = cli('--attach', 'none', cwd=checkout, terminal=True, answers='y\n', contains='Workspace prepared')
 manifest = json.loads((checkout / '.allset').read_text())
 assert manifest['name'] == 'dashboard' and manifest['repository'] == 'example/dashboard'
 assert manifest['mcps']['docs']['url'] == 'https://docs.example.test/mcp'
 before_manifest = (checkout / '.allset').read_bytes()
 before_init_calls = len(calls())
-cli('init', cwd=checkout, terminal=True, answers='2\n', contains='preferred coding agent')
+cli('init', cwd=checkout, terminal=True, answers='y\n', contains='Project binding verified')
 assert len(calls()) == before_init_calls, 'Replaying setup contacted a provider'
-assert 'Project setup:' in output
+assert 'Set up this project' in output and 'How would you like to continue?' not in output
 assert 'Preparing your project' in output and 'Preparing your MCP settings' in output
 assert 'changed_files' not in output, 'Startup dumped raw MCP protocol output'
 assert (checkout / '.allset').read_bytes() == before_manifest
 assert (home / '.config/allset/config.json').read_bytes() == before_registry
-print('PASS: setup reviews/cancels/hands off safely; direct setup continues with concise phases', flush=True)
+print('PASS: compact setup confirms/cancels safely and continues with concise phases', flush=True)
 assert cache.is_dir() and not (state / 'controller').exists()
 assert json.loads((home / '.codex/auth.json').read_text()) == json.loads(source.read_text())
 assert 'fixture-model' in (home / '.codex/config.toml').read_text()

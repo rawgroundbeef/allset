@@ -40,8 +40,10 @@ they never fall through into inference or first-time provisioning.
 
 Absent a manifest, interactive current-project open enters configuration review
 and, after approval, continues into guided environment onboarding. Saved registry bindings
-are displayed for an explicit choice before creating the file. The review also
-offers a configuration-only prompt for the user’s coding agent and cancellation.
+are displayed for confirmation before creating the file. New repositories ask
+only for the inferred project name and compute provider; the normal path has no
+mode-selection menu. Agent-assisted configuration remains available separately
+through `allset config guide`.
 Explicit `init` reopens the configuration-only review without overwriting it. Named shortcuts and noninteractive calls keep
 registry inference for continuity. An unknown repository enters init only during
 interactive open. Init creates a

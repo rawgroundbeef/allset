@@ -13,6 +13,11 @@
   MCP/skill projection, scoped Infisical session values, and the selected caller
   handoff. Explicit `allset init`, inspection, status, diagnosis, and dry-run do
   not enter this mutation path.
+- Follow-up UX feedback removed the three-option setup preamble and internal
+  ownership narration from the normal path. New repositories now show one compact
+  heading, ask directly for name/provider, and continue to coding tools. Saved
+  settings use a single yes/no confirmation; agent guidance remains an explicit
+  `allset config guide` command.
 - Shared `.allset` contracts now support strict repository-relative skills,
   session environment references, and explicit native HTTP MCP OAuth. Private
   profiles retain provider/client/GitHub/Infisical choices. The onboarding journal

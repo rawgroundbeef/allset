@@ -43,7 +43,7 @@ func TestExistingManifestOpensAndInitPreservesContents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init"}, {"config", "show", "--project"}, nil} {
-		a.In = strings.NewReader("1\n")
+		a.In = strings.NewReader("y\n")
 		if code := a.Run(context.Background(), args); code != 0 {
 			t.Fatal(args, code, out.String())
 		}
@@ -76,7 +76,7 @@ func TestBrokenOrForeignManifestNeverFallsBackToRegisteredProject(t *testing.T) 
 func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) {
 	a, out, plans := appFixture(t)
 	before, _ := os.ReadFile(a.ConfigPath)
-	a.In = strings.NewReader("1\n")
+	a.In = strings.NewReader("y\n")
 	if code := a.Run(context.Background(), []string{"init"}); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -84,7 +84,7 @@ func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) 
 	if err != nil || m.Name != "dashboard" || m.Backend != "box" {
 		t.Fatal(m, err)
 	}
-	a.In = strings.NewReader("1\n")
+	a.In = strings.NewReader("y\n")
 	if code := a.Run(context.Background(), []string{"init"}); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -110,7 +110,7 @@ func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		input := strings.NewReader("1\n")
+		input := strings.NewReader("y\n")
 		a.In = input
 		if code := a.Run(context.Background(), args); code != 0 {
 			t.Fatal(args, code, out.String())
@@ -120,7 +120,7 @@ func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 			manifest.Backend != registry.Projects[0].Backend || strings.Join(manifest.Aliases, ",") != "joy" {
 			t.Fatal("saved project binding was not preserved", manifest, err)
 		}
-		if len(*plans) != 1 || (*plans)[0].Project != "dashboard" || !strings.Contains(out.String(), "How would you like to continue?") {
+		if len(*plans) != 1 || (*plans)[0].Project != "dashboard" || !strings.Contains(out.String(), "Use these settings?") {
 			t.Fatal("setup skipped review or did not continue to the environment")
 		}
 		after, _ := os.ReadFile(a.ConfigPath)
@@ -133,9 +133,9 @@ func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 	}
 }
 
-func TestSetupCancellationAndAgentHandoffLeaveExistingStateUntouched(t *testing.T) {
+func TestSetupCancellationLeavesExistingStateUntouched(t *testing.T) {
 	for _, existing := range []bool{false, true} {
-		for _, answer := range []string{"", "3\n", "2\n", "invalid\n3\n"} {
+		for _, answer := range []string{"", "n\n", "invalid\nn\n"} {
 			a, out, plans := appFixture(t)
 			path := filepath.Join(a.CurrentDir, config.ProjectFilename)
 			body := []byte(`{"version":1,"name":"dashboard","repository":"acme/dashboard","backend":"box"}`)
@@ -153,11 +153,7 @@ func TestSetupCancellationAndAgentHandoffLeaveExistingStateUntouched(t *testing.
 			if existing {
 				args = []string{"init"}
 			}
-			want := 1
-			if answer == "2\n" {
-				want = 0
-			}
-			if code := a.Run(context.Background(), args); code != want || len(*plans) != 0 {
+			if code := a.Run(context.Background(), args); code != 1 || len(*plans) != 0 {
 				t.Fatal(code, out.String(), "setup dispatched an environment operation")
 			}
 			after, err := os.ReadFile(a.ConfigPath)
@@ -171,9 +167,6 @@ func TestSetupCancellationAndAgentHandoffLeaveExistingStateUntouched(t *testing.
 				}
 			} else if !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("setup wrote unapproved config", err)
-			}
-			if answer == "2\n" && (!strings.Contains(out.String(), "allset config guide") || !strings.Contains(out.String(), "preferred coding agent")) {
-				t.Fatal("missing agent handoff", out.String())
 			}
 		}
 	}
@@ -209,7 +202,7 @@ func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/project.git"), nil
 	}
-	a.In = strings.NewReader("1\n\n\ncodex\nwork@example.test\n")
+	a.In = strings.NewReader("\n\ncodex\nwork@example.test\n")
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -220,9 +213,9 @@ func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 	if len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
 		t.Fatal("guided setup did not dispatch onboarding", *plans)
 	}
-	if !strings.Contains(out.String(), "Compute provider") || !strings.Contains(out.String(), "Coding session setup") ||
-		!strings.Contains(out.String(), "Account choices and credentials stay private") {
-		t.Fatal("guided setup or agent instructions were missing")
+	if !strings.Contains(out.String(), "Compute provider") || !strings.Contains(out.String(), "Coding tools") ||
+		strings.Contains(out.String(), "How would you like to continue?") {
+		t.Fatal("guided setup was missing or retained the old menu")
 	}
 }
 
@@ -280,7 +273,7 @@ func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testi
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/repo.git"), nil
 	}
-	a.In = strings.NewReader("1\ndemo\n\n")
+	a.In = strings.NewReader("demo\n\n")
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -353,7 +346,7 @@ func TestInteractiveOpenContinuesOnboardingAfterConfigurationOnlyInit(t *testing
 	if code := a.Run(context.Background(), nil); code != 0 || len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
 		t.Fatal(code, out.String(), *plans)
 	}
-	if !strings.Contains(out.String(), "Coding session setup") {
+	if !strings.Contains(out.String(), "Coding tools") {
 		t.Fatal("missing private onboarding choices", out.String())
 	}
 }

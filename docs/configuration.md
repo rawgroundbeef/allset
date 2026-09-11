@@ -43,12 +43,13 @@ repository file. `allset init` reopens the review even when `.allset` exists;
 keeping that configuration leaves the file unchanged. Noninteractive init
 requires `--yes`.
 
-The review offers direct setup, a configuration guide for the user's preferred
-coding agent, or cancellation. Selecting the guide changes no files and starts no
-agent or VM. The direct path creates a versioned private profile and uniquely
-named Box environment, disables ambient provider credential injection before
-compute creation, and journals each stage for retry. Dry runs and read-only
-commands never run this flow.
+The normal path shows a compact project summary and one confirmation for saved
+settings. A new repository asks directly for its inferred name and provider; it
+does not present a setup-mode menu. `allset config guide` remains available when
+the developer wants agent-assisted configuration. Continuing creates a versioned
+private profile and uniquely named Box environment, disables ambient provider
+credential injection before compute creation, and journals each stage for retry.
+Dry runs and read-only commands never run this flow.
 
 This is a real config discovery/init path, not yet an automatic installer for
 arbitrary projects. Existing setup/services/credentials continue to live in the

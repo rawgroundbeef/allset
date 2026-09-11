@@ -386,9 +386,6 @@ func (a App) Run(ctx context.Context, args []string) int {
 		}
 		if location.ManifestPath == "" {
 			p, reader, setupErr := a.initialize(ctx, f, nil)
-			if errors.Is(setupErr, errSetupHandoff) {
-				return 0
-			}
 			if setupErr != nil {
 				return a.fail(setupErr)
 			}

@@ -98,7 +98,7 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 		}
 		fmt.Fprintln(a.Out, "Using", location.ManifestPath)
 		if !*accept {
-			reader, err := a.reviewSetup(p, true)
+			reader, err := a.reviewSetup(p, true, nil)
 			if err != nil {
 				return p, nil, err
 			}
@@ -114,21 +114,19 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 	if known != nil && !errors.Is(known, config.ErrUnregistered) {
 		return p, nil, known
 	}
-	fmt.Fprintf(a.Out, "Project setup: %s\n", repo)
-	fmt.Fprintln(a.Out, "Shared project settings go in .allset. Account choices and credentials stay private.")
 	var reader *bufio.Reader
-	if !*accept {
-		reader, err = a.reviewSetup(p, false)
-		if err != nil {
-			return p, nil, err
-		}
-	}
 	if known == nil {
 		if (*name != "" && p.Name != *name) || (*backend != "" && p.Backend != *backend) {
 			return p, nil, errors.New("requested project identity conflicts with this repository's saved environment")
 		}
 		fmt.Fprintln(a.Out, "Using this repository's saved project settings.")
 	} else {
+		if !*accept {
+			reader, err = a.setupReader()
+			if err != nil {
+				return p, nil, err
+			}
+		}
 		key, _ := config.RepositoryKey(repo)
 		inferred := strings.TrimSuffix(filepath.Base(key), ".git")
 		inferred = strings.Trim(strings.Map(func(r rune) rune {
@@ -145,17 +143,23 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 			provider = a.Strategies.Names()[0]
 		}
 		if !*accept {
-			fmt.Fprintln(a.Out, "Press Enter to accept a suggested value, or Ctrl+C to cancel.")
-			inferred, err = setupAnswer(reader, a.Out, "1/2 Project name", inferred)
+			fmt.Fprintf(a.Out, "Set up this project\n  Repository: %s\n", repo)
+			inferred, err = setupAnswer(reader, a.Out, "Project name", inferred)
 			if err != nil {
 				return p, nil, err
 			}
-			provider, err = setupAnswer(reader, a.Out, "2/2 Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
+			provider, err = setupAnswer(reader, a.Out, "Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
 			if err != nil {
 				return p, nil, err
 			}
 		}
 		p = config.Project{Name: inferred, Repository: repo, Backend: provider}
+	}
+	if !*accept && known == nil {
+		reader, err = a.reviewSetup(p, false, reader)
+		if err != nil {
+			return p, nil, err
+		}
 	}
 	if _, err := a.Strategies.Lookup(p.Backend); err != nil {
 		return p, nil, err
@@ -167,7 +171,7 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 	if err := config.WriteProject(path, config.Manifest{Version: 1, Project: p}); err != nil {
 		return p, nil, err
 	}
-	fmt.Fprintf(a.Out, "Saved %s\nProject: %s · Compute: %s\n", path, p.Name, p.Backend)
+	fmt.Fprintf(a.Out, "Saved .allset — %s on %s\n", p.Name, p.Backend)
 	return p, reader, nil
 }
 
@@ -179,9 +183,6 @@ func (a App) initCommand(ctx context.Context, args []string) int {
 		return a.fail(err)
 	}
 	p, _, err := a.initialize(ctx, f, args)
-	if errors.Is(err, errSetupHandoff) {
-		return 0
-	}
 	if err != nil {
 		return a.fail(err)
 	}
