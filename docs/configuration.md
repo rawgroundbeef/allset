@@ -64,6 +64,13 @@ interruption. Skipped clients remain unconnected and show their exact
 `allset config CLIENT` repair command; they are not prompted again on warm entry.
 SSH opens only after each selected client is connected or explicitly skipped.
 
+Preparation uses one live line followed by a green completion check. Account
+steps use cyan numbering, green verified receipts, and amber skip/retry messages;
+supporting details are dimmed. Native sign-in links and prompts remain unchanged.
+`NO_COLOR` disables AllSet styling; `TERM=dumb`, `CI=1`, and
+`ALLSET_ACCESSIBLE=1` also disable the progress animation. Redirected output is
+plain text.
+
 This is a real config discovery/init path, not yet an automatic installer for
 arbitrary projects. Existing setup/services/credentials continue to live in the
 local compatibility profiles. The manifest does not accept unsupported fields.

@@ -2,6 +2,32 @@
 
 ## Remote coding session onboarding implementation — 2026-09-11
 
+- Added the requested inline visual polish: a bold project heading, cyan active
+  steps/spinner, green completion/account checks, amber skip/recovery marks, and
+  dimmed metadata. TTY preparation now replaces one live row and leaves one
+  completion receipt, not repeated successful internal phases. Native sign-in
+  bytes, stdin, authentication decisions, and verification/save order are
+  unchanged. `NO_COLOR` disables styling; redirected output, `TERM=dumb`, `CI`,
+  and `ALLSET_ACCESSIBLE` also avoid redraws. No fullscreen/alternate buffer,
+  new dependency, credential operation, or live environment change was added.
+  **Local/mock + interactive terminal:** race suite, vet, CLI build, and diff
+  whitespace passed. Actual PTY checks cover colored marks, one completion row,
+  metadata control-character sanitization, plain/accessibility fallbacks, and
+  release before native input/handoff. A synthetic PTY preview was inspected.
+  The Linux arm64 archive under `/private/tmp/allset-guided-release-20260911-22`
+  passed the offline packaged harness, including Go/runtime styling fallbacks,
+  sequential verified sign-ins, interrupt/skip, and warm reuse. The existing
+  implementation binary was rebuilt; the installed `allset` was not replaced.
+  **Review:** local/non-independent correctness, ownership, security, resources,
+  maintainability, and coverage passes found no blocking issue in this cosmetic
+  diff. **Next:** see the new styling on the next ordinary connection; no account
+  reset or repeat onboarding is needed for visual verification.
+- **Real remote + interactive, user-reported:** the user's successful transcript
+  after `0cfc77b` shows Box/project preparation, Codex → Claude Code → Cursor native
+  browser sign-ins with verified account receipts, then SSH into the project
+  checkout. This supersedes the earlier live preparation/OAuth evidence gaps
+  below. It does not prove the remaining first-turn model/MCP/skill/secret or warm
+  return criteria. No account identifiers or OAuth URLs were copied into evidence.
 - Fixed the user's first-checkout failure for
   `https://github.com/octocat/hello-world`: shared configuration accepted the full
   URL, but source preparation only accepted shorthand or a local path. It now

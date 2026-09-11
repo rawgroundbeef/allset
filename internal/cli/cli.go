@@ -416,7 +416,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 			if setupErr = config.WriteProject(path, config.Manifest{Version: 1, Project: p}); setupErr != nil {
 				return a.fail(setupErr)
 			}
-			fmt.Fprintf(a.Out, "%s · onboarding\n", p.Name)
+			a.printOperation(p.Name, "onboarding")
 			if setupErr = a.Exec(plan); setupErr != nil {
 				return a.fail(setupErr)
 			}
@@ -518,7 +518,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if label == "onboard" {
 		label = "onboarding"
 	}
-	fmt.Fprintf(a.Out, "%s · %s\n", p.Name, label)
+	a.printOperation(p.Name, label)
 	if err := a.Exec(plan); err != nil {
 		return a.fail(err)
 	}

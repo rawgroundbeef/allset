@@ -4,6 +4,7 @@ import json
 import io
 import os
 import pty
+import re
 import select
 import time
 import tempfile
@@ -265,6 +266,57 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual('Stopped waiting' in text, isinstance(error, KeyboardInterrupt))
             self.assertFalse(progress.active())
             self.assertIsNone(display.worker)
+
+    def test_onboarding_terminal_style_and_plain_fallbacks(self):
+        for mode in ({}, {'NO_COLOR': ''}, {'TERM': 'dumb'}, {'CI': '1'}, {'ALLSET_ACCESSIBLE': '1'}):
+            with self.subTest(mode=mode):
+                master, slave = pty.openpty()
+                try:
+                    with os.fdopen(os.dup(slave), 'w', buffering=1) as output, \
+                         patch.dict(os.environ, {'TERM': 'xterm-256color', **mode}, clear=True), \
+                         contextlib.redirect_stdout(output):
+                        with progress.Progress(summary='Box prepared') as display:
+                            progress.stage('files', 'Checking your saved files')
+                            progress.stage('tools', 'Checking your tools')
+                            progress.stage('files', 'Checking your saved files')
+                            progress.note('Branch: fixture\x1b[31m\nlabel')
+                        progress.auth_step(1, 3, 'Authenticating Codex')
+                        progress.receipt('Codex', 'fixture@example.test')
+                        progress.receipt('Claude Code skipped', 'sign in later: allset config claude', state='skipped')
+                        progress.receipt('Cursor sign-in interrupted', state='warning')
+                        progress.handoff('Opening SSH shell')
+                        output.write('NATIVE-SHELL\n')
+                    chunks = []
+                    while select.select([master], [], [], 0.05)[0]:
+                        chunks.append(os.read(master, 65536))
+                    raw = b''.join(chunks).decode()
+                    text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', raw)
+                    self.assertEqual(text.count('✓ Box prepared'), 1)
+                    self.assertNotIn('✓ Checking', text, 'internal phases accumulated as completed rows')
+                    self.assertIn('1/3 · Authenticating Codex', text)
+                    self.assertIn('✓ Codex · fixture@example.test', text)
+                    self.assertIn('– Claude Code skipped · sign in later: allset config claude', text)
+                    self.assertIn('! Cursor sign-in interrupted', text)
+                    self.assertIn('→ Opening SSH shell', text)
+                    self.assertTrue(raw.rstrip().endswith('NATIVE-SHELL'))
+                    self.assertNotIn('\x1b[31m', raw, 'metadata controlled terminal styling')
+                    self.assertFalse(progress.active())
+                    if not mode:
+                        for styled in ('\x1b[32m✓\x1b[0m', '\x1b[36m1/3\x1b[0m',
+                                       '\x1b[1mAuthenticating Codex\x1b[0m', '\x1b[33m–\x1b[0m',
+                                       '\x1b[33m!\x1b[0m', '\x1b[2m · fixture@example.test\x1b[0m'):
+                            self.assertIn(styled, raw)
+                    else:
+                        self.assertNotRegex(raw, r'\x1b\[[0-9;]*m', 'plain mode emitted ANSI styling')
+                    if mode and 'NO_COLOR' not in mode:
+                        self.assertNotIn('\x1b', raw, 'plain mode animated the display')
+                        self.assertIsNone(display.worker)
+                    else:
+                        self.assertIn('\r\x1b[2K', raw)
+                        self.assertFalse(display.worker.is_alive())
+                finally:
+                    os.close(master)
+                    os.close(slave)
 
     def test_progress_real_tty_animates_and_releases_terminal_on_every_exit(self):
         for error in (None, RuntimeError('fixture'), KeyboardInterrupt()):

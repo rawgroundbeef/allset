@@ -87,9 +87,12 @@ register the machine, and prepare a workspace. The binary and controller now
 upgrade together; there is no separate controller-code installation step.
 
 The bundled preparation runtime reports explicit phases to a scoped progress
-display. TTY output animates one current row, with completed rows and a final
-checkout/account summary; redirected output and `TERM=dumb` use plain lines.
-`NO_COLOR` disables color. The display stops and joins its redraw worker before
+display. TTY output animates one current row, replacing internal phases rather
+than accumulating completed rows. One green completion receipt precedes dimmed
+checkout/account details; numbered sign-ins use cyan, verified account receipts
+use green, and skip/recovery messages use amber. Redirected output, `TERM=dumb`,
+`CI`, and `ALLSET_ACCESSIBLE` use plain lines. `NO_COLOR` disables styling but
+retains terminal animation. The display stops and joins its redraw worker before
 native terminal handoff, and on exceptions/cancellation. It does not estimate
 percentages, poll providers itself, or change lifecycle decisions. Native MCP
 sync keeps its standalone output; opening summarizes that result instead of

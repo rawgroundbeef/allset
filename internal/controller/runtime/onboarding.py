@@ -353,17 +353,16 @@ def authenticate_clients(controller, owner, profile, pending):
             cached = agent_auth.cached_login(controller, profile, binding, client)
             if cached.get('onboarding_skipped') and cached.get('needs_login'):
                 skipped.add(client)
-                print('  – ' + label + ' skipped · sign in later: allset config ' + client, flush=True)
+                progress.receipt(label + ' skipped', 'sign in later: allset config ' + client, state='skipped')
                 continue
             email = binding['providers'][client].get('account_email')
             if (not email or cached.get('needs_login') or cached.get('logged_out')
                     or not agent_auth.has_login(client, cached.get('contents'))):
                 raise ValueError('Saved ' + label + ' sign-in is incomplete; retry onboarding')
-            print('  ✓ ' + label + ' · ' + progress.clean(email) + ' · saved login', flush=True)
+            progress.receipt(label, email + ' · saved login')
             continue
         while True:
-            print('\n' + str(index) + '/' + str(len(selected)) + ' · Authenticating ' + label, flush=True)
-            print('Ctrl+C to retry, skip, or quit.', flush=True)
+            progress.auth_step(index, len(selected), 'Authenticating ' + label)
             try:
                 result = agent_auth.login(controller, owner, profile, client, guided=True)
                 if result == 0:
@@ -375,7 +374,8 @@ def authenticate_clients(controller, owner, profile, pending):
                 message = progress.clean(error)
             except (OSError, subprocess.SubprocessError):
                 message = label + ' sign-in could not finish. Check your connection and try again.'
-            print('\n  ! ' + message, flush=True)
+            print()
+            progress.receipt(message, state='warning')
             while True:
                 choice = input('Retry / skip / quit [retry]: ').strip().lower()
                 if choice in ('', 'r', 'retry', 's', 'skip', 'q', 'quit'):
@@ -386,6 +386,6 @@ def authenticate_clients(controller, owner, profile, pending):
             if choice in ('s', 'skip'):
                 agent_auth.skip_login(controller, profile, client)
                 skipped.add(client)
-                print('  – ' + label + ' skipped · sign in later: allset config ' + client, flush=True)
+                progress.receipt(label + ' skipped', 'sign in later: allset config ' + client, state='skipped')
                 break
     return skipped

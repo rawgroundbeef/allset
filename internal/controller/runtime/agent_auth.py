@@ -265,7 +265,7 @@ def login(controller, meta, profile, provider, *, guided=False):
     private_write(path, pending)
     if not guided:
         print('Sign in to ' + provider + ' for ' + profile['name'] + ' (' + binding['name'] + ').', flush=True)
-    print('Open the link in your local browser. Use the account for this project.', flush=True)
+        print('Open the link in your local browser. Use the account for this project.', flush=True)
     args = ['ssh', '-tt']
     if provider == 'codex':
         # Native browser auth works for organizations that disable device codes.
@@ -280,7 +280,7 @@ def login(controller, meta, profile, provider, *, guided=False):
                 progress.stage('verify-login', 'Verifying ' + CLIENT_LABELS[provider] + ' account')
             email = verify_login(controller, meta, profile, binding, provider, expected)
         if guided:
-            print('  ✓ ' + CLIENT_LABELS[provider] + ' · ' + progress.clean(email), flush=True)
+            progress.receipt(CLIENT_LABELS[provider], email)
         else:
             print(provider + ' login saved for ' + profile['name'] + ' as ' + email + '.', flush=True)
     return result

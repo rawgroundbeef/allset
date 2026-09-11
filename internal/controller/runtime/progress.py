@@ -14,6 +14,32 @@ def clean(value):
     return ''.join(ch if not unicodedata.category(ch).startswith('C') else ' ' for ch in str(value))
 
 
+def rich_terminal(stream=None):
+    stream = stream if stream is not None else sys.stdout
+    return stream.isatty() and os.environ.get('TERM') != 'dumb' and not (
+        os.environ.get('CI') or os.environ.get('ALLSET_ACCESSIBLE'))
+
+
+def paint(value, code, stream=None):
+    value = clean(value)
+    return '\033[' + code + 'm' + value + '\033[0m' if rich_terminal(stream) and 'NO_COLOR' not in os.environ else value
+
+
+def receipt(title, detail='', *, state='success'):
+    marker, color = {'success': ('✓', '32'), 'skipped': ('–', '33'), 'warning': ('!', '33')}[state]
+    print('  ' + paint(marker, color) + ' ' + paint(title, '1') +
+          (paint(' · ' + detail, '2') if detail else ''), flush=True)
+
+
+def auth_step(index, total, title):
+    print('\n  ' + paint(str(index) + '/' + str(total), '36') + paint(' · ', '2') + paint(title, '1'), flush=True)
+    print('  ' + paint('Browser sign-in · Ctrl+C to retry, skip, or quit', '2'), flush=True)
+
+
+def handoff(title):
+    print('\n  ' + paint('→', '36') + ' ' + paint(title, '1') + '\n', flush=True)
+
+
 def elapsed(seconds):
     seconds = max(0, int(seconds))
     return f'{seconds // 60}m {seconds % 60:02d}s' if seconds >= 60 else f'{seconds}s'
@@ -38,7 +64,7 @@ def active():
 
 
 class Progress:
-    """One current phase plus completed rows; plain text when output is captured.
+    """One live phase and one completion receipt; plain milestones when captured.
 
     Callers report actual work, never estimated percentages. The worker only
     redraws text: it owns no provider operation and cannot outlive this scope.
@@ -46,7 +72,7 @@ class Progress:
     def __init__(self, stream=None, *, summary='Workspace prepared'):
         self.stream = stream if stream is not None else sys.stdout
         self.summary = clean(summary) if summary is not None else None
-        self.animated = self.stream.isatty() and os.environ.get('TERM') != 'dumb'
+        self.animated = rich_terminal(self.stream)
         self.color = self.animated and 'NO_COLOR' not in os.environ
         self.lock = threading.Lock()
         self.stop = threading.Event()
@@ -100,7 +126,7 @@ class Progress:
             fitted += char
             cells += size
         self.clear()
-        self.write(self.row('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[self.frame % 10], fitted + suffix))
+        self.write(self.row('⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'[self.frame % 10], fitted + paint(suffix, '2', self.stream)))
         self.frame += 1
 
     def animate(self):
@@ -113,9 +139,6 @@ class Progress:
         with self.lock:
             if (key, title, detail) == (self.key, self.title, self.detail):
                 return
-            if self.animated and self.key and key != self.key:
-                self.clear()
-                self.write(self.row('✓', self.title, '32') + '\n')
             self.key, self.title, self.detail = key, title, detail
             if self.animated:
                 self.draw()
@@ -137,14 +160,13 @@ class Progress:
         with self.lock:
             self.clear()
             if kind is None and self.summary is not None:
-                if self.key and self.animated:
-                    self.write(self.row('✓', self.title, '32') + '\n')
-                self.write(self.row('✓', self.summary + ' · ' + elapsed(time.monotonic() - self.started), '32') + '\n')
+                self.write(self.row('✓', paint(self.summary, '1', self.stream) +
+                    paint(' · ' + elapsed(time.monotonic() - self.started), '2', self.stream), '32') + '\n')
             elif kind is not None and self.summary is not None:
                 title = 'Stopped waiting' if issubclass(kind, KeyboardInterrupt) else 'Could not finish'
                 self.write(self.row('!', title + (': ' + self.title if self.title else ''), '33') + '\n')
             for message in self.notes:
-                self.write('  ' + message + '\n')
+                self.write('  ' + paint(message, '2', self.stream) + '\n')
         return False
 
 

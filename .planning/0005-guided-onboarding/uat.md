@@ -109,6 +109,29 @@ entry reuses that setup automatically.**
 
 ## Evidence status
 
+### Live sign-in and visual follow-up — 2026-09-11
+
+**Real remote + interactive, user-reported:** the user's transcript from the
+implementation binary after `0cfc77b` shows successful Box/project preparation,
+Codex → Claude Code → Cursor native browser authentication, each verified account
+receipt before the next step, and final SSH handoff into the project checkout.
+No account identifiers or OAuth URLs are retained here. This closes the earlier
+live preparation/sign-in gap, not the first-turn model/MCP/skill/secret criterion.
+
+The subsequent visual change keeps that authentication sequence and native
+streams intact. Its observable target is one live preparation row and one green
+completion receipt, cyan step numbers, green verified account checks, amber
+skip/recovery messages, and dimmed details. Plain/accessibility modes retain the
+same state words without color; native input and final SSH own the terminal once
+the loading display stops. No new live sign-in or VM operation is needed to test
+this presentation-only change. Verification results are in `PROGRESS.md`.
+
+**Local/mock + interactive terminal:** PTY tests and the Linux arm64 archive in
+`/private/tmp/allset-guided-release-20260911-22` passed colored/unstyled output,
+one completion receipt, native input/handoff, sequential verified account saves,
+and interrupt/skip/warm-return checks. A synthetic terminal preview was inspected;
+real provider/browser behavior was not rerun for this cosmetic follow-up.
+
 ### First source fetch follow-up — 2026-09-11
 
 The user's live retry reached repository preparation, then failed because the
@@ -125,9 +148,8 @@ This is first-source-fetch evidence, not a claim of complete cold VM preparation
 **Real public network:** the exact `https://github.com/octocat/hello-world` source
 fetched and bundled in a temporary local cache at commit
 `7fd1a60b01f91b314f59955a4e4d4e80d8edf11d`. No Box/account operation was used.
-**Next real check:** rerun the existing implementation command below, preserving
-the saved project and machine. Full live remote preparation and OAuth remain
-unverified.
+**Subsequent real check:** the user's successful retry is recorded above; the
+saved project and machine did not need a reset.
 
 ### Sequential sign-in follow-up — 2026-09-11
 
@@ -146,7 +168,8 @@ The Linux arm64 offline archive in
 `/private/tmp/allset-guided-release-20260911-19` exercises the packaged onboarding
 entrypoint, three synthetic native sign-ins, verification before SSH handoff,
 interrupt/skip, and warm return. Provider, repository-access, SSH, and account
-boundaries are synthetic; real browser/model success remains unverified.
+boundaries are synthetic. Subsequent real browser success is recorded above;
+model/MCP/skill/secret use remains unverified.
 
 **Next real check:** from the existing `allset-onboarding-test-20260911` checkout,
 run `/private/tmp/allset-guided-onboarding-impl-20260911/bin/allset --attach ssh`.
@@ -164,13 +187,14 @@ Do not reset project state or create a replacement fixture/VM just to retry.
 | Local/mock implementation tests | Passed on macOS arm64, 2026-09-11: strict shared/private contracts, continuous and resumed CLI paths, no app/fallback execution, Box identity and timeout guards, managed skill conflicts, scoped secret filtering, and native argv/cwd preservation |
 | Packaged offline implementation test | Passed with the Linux amd64 release archive in a network-disabled container, 2026-09-11; Box, SSH, Herdr, native login, and MCP boundaries were simulated |
 | Real provider status and pre-creation prompt | Passed 2026-09-11 against Box 0.1.228: `account.identifier`/`loginState: active` parsed, live allowance checked, account/billing/machine terms shown; declined creation and confirmed no profile/journal/machine record |
-| Real remote creation and native OAuth checks | Unverified |
+| Real remote preparation and native OAuth checks | User-reported pass 2026-09-11 after `0cfc77b`: Box/project prepared, Codex/Claude Code/Cursor native sign-ins verified in sequence, then project SSH shell; not a fresh empty-account run |
 | Interactive model/MCP/skill/secret proof | Unverified |
 | Cold and warm latency measurements | Unverified |
 | Human alignment on this walkthrough | Approved by the user, 2026-09-11 |
 
 Implementation commit `5d332d6` is based on planning commit `79f0f87`; its gate
-results are recorded in `PROGRESS.md`. No VM, provider account,
-browser session, or real credential was mutated during these checks. The demo
+results are recorded in `PROGRESS.md`. Agent-run offline checks did not mutate a
+VM, provider account, browser session, or real credential. The later user-run
+interactive proof is identified separately above. The demo
 pass criterion remains unproven until the authorized real first-turn and warm-
 return checks execute. Do not present mocks as real auth.

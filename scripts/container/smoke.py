@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import signal
 import shutil
@@ -50,7 +51,7 @@ def cli(*args, ok=True, contains=None, cwd=None, terminal=False, answers=None):
     return output
 
 
-def cli_tty(*args, cwd=None, interrupt_login=False):
+def cli_tty(*args, cwd=None, interrupt_login=False, extra_env=None):
     """Read a real terminal throughout execution, including the final redraw."""
     master, slave = pty.openpty()
     process = None
@@ -58,7 +59,8 @@ def cli_tty(*args, cwd=None, interrupt_login=False):
     try:
         process = subprocess.Popen(['allset', *args], stdin=slave, stdout=slave, stderr=slave, cwd=cwd,
                                    env={**os.environ, 'TERM': 'xterm-256color',
-                                        'PATH': str(home / '.local/bin') + ':' + os.environ['PATH']})
+                                        'PATH': str(home / '.local/bin') + ':' + os.environ['PATH'],
+                                        **(extra_env or {})})
         interrupted = skipped = False
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
@@ -208,10 +210,19 @@ print('PASS: packaged first checkout accepts the full URL, resolves HEAD, fetche
 
 tty_output = cli_tty('connect', 'dashboard', '--attach', 'none')
 assert '\r\x1b[2K' in tty_output and 'Workspace prepared' in tty_output
+assert '\x1b[1mdashboard\x1b[0m' in tty_output and '\x1b[32m✓\x1b[0m' in tty_output
 assert 'Preparing your MCP settings' in tty_output and 'saved login' in tty_output
 assert 'changed_files' not in tty_output
 assert tty_output.rstrip().endswith('Connect: allset connect dashboard')
 print('PASS: packaged startup animates in a terminal and stops before its final handoff', flush=True)
+
+for mode in ({'NO_COLOR': ''}, {'TERM': 'dumb'}, {'CI': '1'}, {'ALLSET_ACCESSIBLE': '1'}):
+    plain_output = cli_tty('connect', 'dashboard', '--attach', 'none', extra_env=mode)
+    assert not re.search(r'\x1b\[[0-9;]*m', plain_output), mode
+    assert 'dashboard · connect' in plain_output and '✓ Workspace prepared' in plain_output
+    if 'NO_COLOR' not in mode:
+        assert '\x1b' not in plain_output, mode
+print('PASS: packaged Go heading and runtime honor NO_COLOR, dumb terminals, CI and accessible output', flush=True)
 
 before = len(calls())
 before_codex = (home / '.codex/auth.json').read_bytes()
@@ -271,7 +282,10 @@ for clients in (['cursor', 'claude', 'codex'], ['codex']):
     if interrupt:
         write(home / 'interrupt-native-login', 'fixture')
     before = len(calls())
-    output = cli_tty('--attach', 'none' if interrupt else 'ssh', cwd=checkout, interrupt_login=interrupt)
+    raw_output = cli_tty('--attach', 'none' if interrupt else 'ssh', cwd=checkout, interrupt_login=interrupt)
+    output = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', raw_output)
+    assert '\x1b[36m1/' + str(len(clients)) + '\x1b[0m' in raw_output
+    assert output.count('✓ Box prepared') == 1 and '✓ Checking' not in output and '✓ Preparing' not in output
     assert output.index('Box prepared') < output.index('1/' + str(len(clients)) + ' · Authenticating Codex')
     assert output.rstrip().endswith('Connect: allset connect dashboard' if interrupt else 'SYNTHETIC SSH SHELL')
     native_calls = [(c['tool'], c['operation']) for c in calls()[before:]

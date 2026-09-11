@@ -202,7 +202,7 @@ def main():
         print("Start your agent in that remote pane so Herdr can track it under the project.")
         return 0
     if attach == "ssh":
-        print("Opening SSH shell. Choose your agent here.", flush=True)
+        progress.handoff('Opening SSH shell')
     elif attach == "terminal":
         print("Persistent project terminal. Detach with Ctrl+b, then q; reconnect with allset.", flush=True)
     else:
