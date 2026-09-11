@@ -60,10 +60,13 @@ const help = `AllSet — open your remote project and choose your agent.
 
 Use --dry-run on open/resume/connect/login/collect/stop to inspect dispatch.
 Open/resume/login accept --ttl SECONDS (default 7200; existing trial cap retained).
-Open/resume/connect accept --attach auto|herdr|ssh|none|terminal (default auto).
-Auto opens an SSH shell in the terminal you are already using. No terminal
-setting belongs in project config. SSH processes do not persist automatically;
---attach herdr opens existing persistent sessions explicitly. No client takeover.
+Open/resume/connect accept --attach auto|workspace|herdr|ssh|none|terminal (default auto).
+Auto in a Herdr pane prepares a remote workspace, then returns for a sidebar click.
+Elsewhere, auto opens an ordinary SSH shell without installing a session manager.
+--attach workspace prepares the Herdr sidebar handoff explicitly.
+--attach herdr opens a separate Herdr client; --attach terminal attaches to its PTY.
+--attach none prepares the project without opening a connection.
+No terminal setting belongs in project config. No client takeover.
 Projects/status/doctor and dry-run accept --json. Doctor exits 2 for incomplete
 checks, 1 for failures. --config PATH must precede the command.
 
@@ -338,7 +341,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 		flags.IntVar(&ttl, "ttl", 7200, "Auto-stop seconds")
 	}
 	if operation == "open" || operation == "resume" || operation == "connect" {
-		flags.StringVar(&attach, "attach", "auto", "auto, herdr, ssh, none, or terminal")
+		flags.StringVar(&attach, "attach", "auto", "auto, workspace, herdr, ssh, none, or terminal")
 	}
 	if err := flags.Parse(args); err != nil {
 		return a.fail(err)
@@ -349,7 +352,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if *asJSON && !dry && operation != "status" && operation != "doctor" {
 		return a.fail(errors.New("--json on lifecycle operations requires --dry-run"))
 	}
-	attach, err = terminal.Resolve(attach)
+	attach, err = terminal.Resolve(attach, os.Getenv("HERDR_ENV") == "1")
 	if err != nil {
 		return a.fail(err)
 	}

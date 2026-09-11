@@ -12,18 +12,24 @@ import (
 //go:embed connect.py
 var Bridge string
 
+//go:embed workspace.py
+var WorkspaceBridge string
+
 func Valid(name string) bool {
-	return name == "herdr" || name == "ssh" || name == "none"
+	return name == "herdr" || name == "ssh" || name == "none" || name == "workspace"
 }
 
-// Resolve uses the caller's current terminal by default. UI integrations are
-// explicit connection overrides, never repository configuration.
-func Resolve(override string) (string, error) {
+// Resolve chooses an interface from the caller context, never a target machine.
+// In Herdr, auto prepares a remote workspace for the existing client's sidebar.
+func Resolve(override string, inHerdr bool) (string, error) {
 	if override == "auto" {
+		if inHerdr {
+			return "workspace", nil
+		}
 		return "ssh", nil
 	}
 	if !Valid(override) && override != "terminal" {
-		return "", fmt.Errorf("unsupported attachment; choose auto, herdr, ssh, none, or terminal")
+		return "", fmt.Errorf("unsupported attachment; choose auto, workspace, herdr, ssh, none, or terminal")
 	}
 	return override, nil
 }

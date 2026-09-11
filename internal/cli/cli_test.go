@@ -18,6 +18,7 @@ import (
 
 func appFixture(t *testing.T) (App, *bytes.Buffer, *[]execution.Plan) {
 	t.Helper()
+	t.Setenv("HERDR_ENV", "")
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, ".git"), 0700); err != nil {
 		t.Fatal(err)
@@ -158,19 +159,46 @@ func TestHelpDoesNotRequireConfigOrTools(t *testing.T) {
 	}
 }
 
-func TestCurrentTerminalIgnoresHerdrAndCmuxEnvironment(t *testing.T) {
+func TestHerdrCallerPreparesWorkspaceWithoutInteractiveAttachment(t *testing.T) {
 	a, out, plans := appFixture(t)
 	t.Setenv("HERDR_ENV", "1")
 	t.Setenv("CMUX_WORKSPACE_ID", "existing")
 	if code := a.Run(context.Background(), []string{"dashboard"}); code != 0 {
 		t.Fatal(code, out.String())
 	}
-	if len(*plans) != 1 || !(*plans)[0].Interactive || (*plans)[0].Attachment != "ssh" {
+	if len(*plans) != 1 || (*plans)[0].Interactive || (*plans)[0].Attachment != "workspace" {
 		t.Fatal(*plans)
+	}
+	*plans = nil
+	a.Interactive = false
+	if code := a.Run(context.Background(), []string{"dashboard"}); code != 0 || len(*plans) != 1 || (*plans)[0].Project != "dashboard" {
+		t.Fatal(code, out.String(), *plans)
+	}
+	*plans = nil
+	if code := a.Run(context.Background(), []string{"dashboard", "--dry-run", "--json"}); code != 0 || len(*plans) != 0 || !strings.Contains(out.String(), `"attachment": "workspace"`) {
+		t.Fatal(code, out.String(), *plans)
 	}
 	*plans = nil
 	if a.Run(context.Background(), []string{"dashboard", "--attach", "invented"}) != 1 || len(*plans) != 0 {
 		t.Fatal(out.String())
+	}
+}
+
+func TestCmuxKeepsSSHAndHerdrHonorsExplicitOverrides(t *testing.T) {
+	for _, tc := range []struct{ herdr, mode, want string }{
+		{"", "auto", "ssh"}, {"0", "auto", "ssh"},
+		{"1", "ssh", "ssh"}, {"1", "none", "none"},
+		{"1", "herdr", "herdr"}, {"1", "terminal", "terminal"},
+		{"", "workspace", "workspace"},
+	} {
+		t.Run(tc.herdr+tc.mode, func(t *testing.T) {
+			a, out, plans := appFixture(t)
+			t.Setenv("HERDR_ENV", tc.herdr)
+			t.Setenv("CMUX_WORKSPACE_ID", "unrelated-machine")
+			if code := a.Run(context.Background(), []string{"dashboard", "--attach", tc.mode}); code != 0 || len(*plans) != 1 || (*plans)[0].Attachment != tc.want || (*plans)[0].Project != "dashboard" {
+				t.Fatal(code, out.String(), *plans)
+			}
+		})
 	}
 }
 

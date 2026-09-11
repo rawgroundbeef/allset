@@ -93,14 +93,39 @@ Then run `codex`, `claude`, or `cursor-agent` in the remote shell and work norma
 AllSet does not require a task prompt or choose an agent for you. Agent login,
 GitHub access, and Infisical authentication are separate identities.
 
-The default connection is ordinary SSH: its agent processes are **not guaranteed
-to survive disconnecting**. For existing persistent remote Herdr sessions, use
-`allset --attach herdr`; Ctrl+b, then q detaches the client. `--attach none`
-prepares without attaching. No mode takes over another client or restarts agents.
-Stopping the VM ends every process even though its files persist.
+In a Herdr Local pane, `allset` prepares the project's remote Herdr workspace and
+returns to the local prompt. Select the printed machine and workspace in Herdr's
+sidebar, then launch your agent there. For example, `allset dashboard` prints
+`dashboard > dashboard / project`. The remote Herdr server owns the pane, so its
+agents can appear under that machine in the Agents list. Existing workspaces,
+including split panes and running agents, are reused without changing focus.
+An agent already running behind ordinary SSH stays in its original session.
 
-The current controller retains a maximum two-hour trial auto-stop deadline.
-Opening an already running VM does not extend that deadline. Status reports VM
+Elsewhere, the default is an ordinary SSH shell in the project directory, with
+no session manager installed. Exit the shell to disconnect; run `allset` to
+reconnect. Ordinary SSH does not guarantee foreground process survival.
+
+`--attach workspace` explicitly requests the sidebar handoff from any terminal.
+`--attach ssh` explicitly opens ordinary SSH even in Herdr. `--attach herdr` opens
+a separate Herdr client; `--attach terminal` attaches to a remote Herdr PTY.
+`--attach none` prepares tools, credentials, repository, and declared MCPs without
+session setup or attachment. Agent sign-in also does not require Herdr. No mode
+automatically launches an agent or takes over an existing terminal.
+
+The handoff uses Herdr's native machine catalog and a named remote session. It
+honors the caller's `HERDR_CONFIG_PATH`; it never uses the UI's selected machine
+to choose a project or account. Herdr currently requires the sidebar click to
+select that machine in the existing window. See [Herdr machine connections](https://herdr.dev/docs/connecting-machines/).
+Stopping the VM ends its processes. The returning handoff has no attached login
+cache monitor; use `allset login PROJECT AGENT` for sign-in, and an unobserved
+credential refresh may require sign-in again after a later VM resume.
+
+Create/resume still defaults to a two-hour auto-stop deadline. Opening an already
+running VM preserves its provider deadline, including an explicitly disabled
+auto-stop. Box's trial requires a deadline of at most two hours; paid access allows
+it to be disabled through native Box controls. AllSet does not disable it merely
+because an account has paid. Worktrees belong on persistent storage, not `/tmp`.
+Status reports VM
 state only; it does not prove app, credential, or preview readiness. Collection
 currently targets the default worktree, not an arbitrary agent worktree.
 

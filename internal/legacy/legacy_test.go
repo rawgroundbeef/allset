@@ -128,31 +128,45 @@ func TestOpenBridgeUsesNativeViewAndNeverTakesOver(t *testing.T) {
 	if err != nil {
 		t.Skip("Python is required by the migration adapter")
 	}
-	for _, attach := range []string{"none", "herdr", "terminal"} {
+	for _, attach := range []string{"none", "ssh", "herdr", "terminal", "workspace"} {
 		t.Run(attach, func(t *testing.T) {
 			root := t.TempDir()
+			put(t, root, "profiles/dashboard/shell.json", map[string]string{"task_id": "shell-dashboard"})
 			files := map[string]string{
-				"projects.py": `import os,sys
+				"projects.py": `import os,sys,contextlib
+from pathlib import Path
+PROJECTS=Path(__file__).parent/'profiles'
+project_lock=lambda name: contextlib.nullcontext()
 class C:
  HERDR=sys.executable
  SESSION='agents'
- def herdr_env(self): return dict(os.environ, ALLSET_TEST_NATIVE_VIEW='yes')
+ def herdr_env(self):
+  assert os.environ['FAKE_MODE'] in ('herdr','workspace'), 'plain SSH touched local Herdr environment'
+  return dict(os.environ, ALLSET_TEST_NATIVE_VIEW='yes')
+ def rh(self,owner,*args):
+  assert owner['machine_id']=='bx_saved'
+  assert args==('workspace','list'), 'handoff changed an existing workspace'
+  return {'workspaces':[{'workspace_id':'w_saved','label':'dashboard / project','panes':['codex','claude']}]}
+ def load(self,id):
+  assert id=='shell-dashboard'
+  return {'project':'dashboard','role':'shell','machine_id':'bx_saved','cwd':'/home/user/project'}
 c=C()
 def project(name):
  assert name=='dashboard'
  return {'name':name}
-def open_project(name, ttl, create_terminal):
+def open_project(name, ttl, create_terminal, prepare_sessions):
  assert name=='dashboard' and ttl==7200 and create_terminal is False
+ assert prepare_sessions==(os.environ['FAKE_MODE'] in ('workspace','herdr','terminal'))
  print('prepare')
- return {'ssh_alias':'box-dashboard'}
+ return {'ssh_alias':'box-dashboard','machine_id':'bx_saved'}
 `,
-				"project_shell.py": `def prepare_repository(owner, profile):
+				"project_shell.py": `import os
+def prepare_repository(owner, profile, create_terminal):
+ assert create_terminal==(os.environ['FAKE_MODE'] in ('herdr','terminal'))
  assert owner['ssh_alias']=='box-dashboard' and profile['name']=='dashboard'
  print('repository')
-def shell(name, ttl):
- assert name=='dashboard' and ttl==7200
- print('terminal')
- return 0
+def shell(*args, **kwargs): raise AssertionError('open bypassed shared preparation and ownership validation')
+def terminal(owner, profile): return {'terminal_id':'term_saved'}
 `,
 				"agent_auth.py": `import contextlib
 def print_accounts(controller, profile): print('accounts')
@@ -164,10 +178,31 @@ def monitor(controller, owner, profile):
 `,
 			}
 			// A subprocess stub records the native view instead of connecting to any VM.
-			files["subprocess.py"] = `def call(argv, env):
- assert argv[1:]==['--remote','box-dashboard','--session','agents']
- assert env['ALLSET_TEST_NATIVE_VIEW']=='yes'
- print('native-view')
+			files["subprocess.py"] = `import os,shlex,json
+DEVNULL=-3
+class Result:
+ returncode=0
+ stdout=json.dumps([{'id':'native_profile','label':'dashboard','target':'box-dashboard','session':'agents','enabled':True}])
+def run(argv,env,stdin,capture_output,text,timeout):
+ assert os.environ['FAKE_MODE']=='workspace'
+ assert argv[1:]==['machine','list','--json']
+ assert env['HERDR_CONFIG_PATH']=='/caller/herdr.toml'
+ return Result()
+def call(argv, env):
+ assert (env.get('ALLSET_TEST_NATIVE_VIEW')=='yes')==(os.environ['FAKE_MODE']=='herdr')
+ assert '--takeover' not in argv
+ if argv[0]=='ssh':
+  assert argv[:4]==['ssh','-tt','--','box-dashboard']
+  if os.environ['FAKE_MODE']=='ssh':
+   assert shlex.split(argv[4])[:3]==['cd','--','/home/user/project']
+   assert 'herdr' not in argv[4] and 'tmux' not in argv[4]
+   print('ssh-shell')
+  else:
+   assert shlex.split(argv[4])==['/home/user/.local/bin/herdr','--session','agents','terminal','attach','term_saved']
+   print('terminal')
+ else:
+  assert argv[1:]==['--remote','box-dashboard','--session','agents']
+  print('native-view')
  return 0
 `
 			for name, content := range files {
@@ -178,6 +213,7 @@ def monitor(controller, owner, profile):
 			// Install the stub before the embedded adapter imports subprocess.
 			prefix := "import sys; sys.path.insert(0, sys.argv[1]);\n"
 			cmd := exec.Command(python, "-c", prefix+openBridge, root, "dashboard", "7200", attach)
+			cmd.Env = append(os.Environ(), "FAKE_MODE="+attach, "HERDR_CONFIG_PATH=/caller/herdr.toml")
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatal(err, string(out))
@@ -188,7 +224,10 @@ def monitor(controller, owner, profile):
 			if attach == "none" && (bytes.Contains(out, []byte("native-view")) || !bytes.Contains(out, []byte("Project prepared"))) {
 				t.Fatal(string(out))
 			}
-			if attach == "terminal" && string(out) != "terminal\n" {
+			if attach == "terminal" && (!bytes.Contains(out, []byte("terminal\n")) || !bytes.Contains(out, []byte("monitor-end"))) {
+				t.Fatal(string(out))
+			}
+			if attach == "workspace" && (!bytes.Contains(out, []byte("select dashboard > dashboard / project")) || bytes.Contains(out, []byte("monitor-start"))) {
 				t.Fatal(string(out))
 			}
 		})

@@ -90,9 +90,18 @@ account was verified, and whether an actual MCP call succeeded on the VM.
   Config creation alone does not authorize upgrades or additional spending.
 - Preserve existing worktrees, branches, services, and conversations. Do not
   restart active servers or run migrations to make setup pass.
-- Bare allset currently opens an ordinary SSH shell in the caller's terminal;
-  it does not keep agent processes alive after disconnect. Persistent remote Herdr
-  panes remain available through explicit --attach herdr. Report this limitation.
+- Bare allset in a Herdr Local pane prepares a remote workspace and prints its
+  sidebar location, then returns. Select that workspace before launching an
+  agent so the remote Herdr server can track it. Existing SSH conversations are
+  not migrated. Elsewhere, auto opens an ordinary SSH shell in the project directory.
+  --attach workspace requests the sidebar handoff explicitly; --attach ssh keeps
+  ordinary SSH even in Herdr. --attach herdr opens a separate client and
+  --attach terminal attaches to its PTY. Prepare-only and agent sign-in do not
+  set up a session manager. Do not migrate or stop existing sessions.
+  Ordinary SSH does not guarantee foreground process survival after disconnect.
+  VM auto-stop is independent, and paid access alone does not disable it.
+- Keep worktrees on persistent VM storage; temporary paths such as /tmp are not
+  a safe place for uncommitted work across a VM stop.
 - Verify actual repository access, account identity, secret scope, dependencies,
   and app previews separately. Report which checks were performed or blocked.
 

@@ -20,6 +20,11 @@ func TestConnectUsesSelectedTerminalWithoutResumeOrRepositoryPreparation(t *test
 		{"herdr", "running", "dashboard", true}, {"ssh", "idle", "dashboard", true},
 		{"none", "ready", "dashboard", true}, {"terminal", "running", "dashboard", true},
 		{"herdr", "stopped", "dashboard", false}, {"ssh", "running", "another-project", false},
+		{"terminal", "stopped", "dashboard", false}, {"terminal", "running", "another-project", false},
+		{"terminal", "running", "restoring", false},
+		{"workspace", "running", "dashboard", true}, {"workspace", "stopped", "dashboard", false},
+		{"workspace", "running", "another-project", false}, {"workspace", "running", "restoring", false},
+		{"workspace", "running", "wrong-machine", false}, {"workspace", "running", "relative-directory", false},
 	} {
 		t.Run(tc.mode+"-"+tc.state+"-"+tc.owner, func(t *testing.T) {
 			root := t.TempDir()
@@ -31,6 +36,10 @@ PROJECTS=Path(__file__).parent/'profiles'
 def project(name): return {'name':name}
 def machine(name): return {'machine_id':'bx_saved','ssh_alias':'box-dashboard'}
 project_lock=lambda name: contextlib.nullcontext()
+def wait_project_filesystem(owner,timeout):
+ assert timeout==0
+ if os.environ['FAKE_OWNER']=='restoring': raise RuntimeError('filesystem still restoring')
+ print('filesystem-ready')
 class C:
  HERDR=sys.executable
  SESSION='agents'
@@ -38,10 +47,19 @@ class C:
   assert operation=='info' and id=='bx_saved'
   return {'box':{'state':os.environ['FAKE_STATE']}}
  def refresh_ssh(self,owner): print('refresh')
- def herdr_env(self): return {'MARKER':'preserved'}
+ def herdr_env(self):
+  assert os.environ['FAKE_MODE'] in ('herdr','workspace')
+  return {'MARKER':'preserved'}
+ def rh(self,owner,*args):
+  assert args==('workspace','list'), 'connect changed an existing workspace'
+  assert owner['machine_id']=='bx_saved'
+  return {'workspaces':[{'workspace_id':'w_saved','label':'dashboard / project','panes':['codex','claude']}]}
  def load(self,id):
   assert id=='shell-dashboard'
-  return {'project':os.environ['FAKE_OWNER'],'role':'shell','machine_id':'bx_saved','cwd':'/home/user/a project'}
+  fault=os.environ['FAKE_OWNER']
+  return {'project':'dashboard' if fault in ('wrong-machine','relative-directory') else fault,'role':'shell',
+   'machine_id':'bx_wrong' if fault=='wrong-machine' else 'bx_saved',
+   'cwd':'relative' if fault=='relative-directory' else '/home/user/a project'}
 c=C()
 def open_project(*args,**kwargs): raise AssertionError('connect resumed or prepared a VM')
 `,
@@ -55,9 +73,17 @@ def monitor(*args):
  yield
  print('monitor-end')
 `,
-				"subprocess.py": `import os,shlex
+				"subprocess.py": `import os,shlex,json
+DEVNULL=-3
+class Result:
+ returncode=0
+ stdout=json.dumps([{'id':'native_profile','label':'dashboard','target':'box-dashboard','session':'agents','enabled':True}])
+def run(argv,env,stdin,capture_output,text,timeout):
+ assert os.environ['FAKE_MODE']=='workspace'
+ assert argv[1:]==['machine','list','--json']
+ return Result()
 def call(argv,env):
- assert env=={'MARKER':'preserved'}
+ assert env==({'MARKER':'preserved'} if os.environ['FAKE_MODE']=='herdr' else dict(os.environ))
  assert '--takeover' not in argv
  mode=os.environ['FAKE_MODE']
  if mode=='herdr': assert argv[1:]==['--remote','box-dashboard','--session','agents']
@@ -81,10 +107,13 @@ def call(argv,env):
 			if tc.ok && err != nil {
 				t.Fatal(err, string(out))
 			}
-			if !tc.ok && (err == nil || strings.Contains(string(out), "connected")) {
+			if !tc.ok && (err == nil || strings.Contains(string(out), "connected") || strings.Contains(string(out), "Herdr workspace ready")) {
 				t.Fatal("unsafe connection", string(out))
 			}
-			if tc.ok && tc.mode != "none" && !strings.Contains(string(out), "monitor-end") {
+			if tc.ok && tc.mode != "none" && tc.mode != "workspace" && !strings.Contains(string(out), "monitor-end") {
+				t.Fatal(string(out))
+			}
+			if tc.ok && tc.mode == "workspace" && !strings.Contains(string(out), "select dashboard > dashboard / project") {
 				t.Fatal(string(out))
 			}
 		})
@@ -103,13 +132,16 @@ class C:
  def ssh_args(self,owner): return ['ssh','project-dashboard']
 c=C()
 def project(name): return {'name':name}
-def open_project(name,ttl,create_terminal):
+def open_project(name,ttl,create_terminal,prepare_sessions):
+ assert prepare_sessions is False
  assert name=='dashboard' and create_terminal is False
  print('prepared')
  return {'ssh_alias':'project-dashboard'}
 def wait_project_filesystem(owner,timeout): print('filesystem-ready')
 `,
-		"project_shell.py": `def prepare_repository(owner,profile): print('repository-ready')
+		"project_shell.py": `def prepare_repository(owner,profile,create_terminal):
+ assert create_terminal is False
+ print('repository-ready')
 `,
 		"agent_auth.py": `def print_accounts(*args): pass
 `,

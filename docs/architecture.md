@@ -15,9 +15,10 @@ already opened. AllSet resolves the project's environment and connects there.
 - `internal/providers/box` owns native read-only Box information queries.
 - `internal/strategies/box` composes compute with the existing workspace adapter.
 - `internal/terminal` implements connection transports selected per invocation.
-  Auto means ordinary SSH in the current terminal, regardless of HERDR_ENV or
-  cmux environment variables. Native Herdr views and prepare-only mode require
-  explicit flags. There is no terminal field in project or registry config.
+  Auto with `HERDR_ENV=1` requests a native remote workspace handoff; elsewhere
+  it opens ordinary SSH. Explicit transports override that choice. Caller UI
+  context never chooses the target VM, session, project, or account. There is
+  no terminal field in repository or registry config.
 - `internal/execution` bounds child processes and performs terminal handoff.
 - `internal/legacy` is the temporary workspace compatibility boundary, not a
   backend. Existing provisioning, allowance guards, auth, and workspace setup
@@ -50,16 +51,42 @@ pointers, authentication caches, and project profiles are not rewritten.
 
 ## Remaining extraction
 
-The repository file currently declares the project binding, not complete
-workspace requirements. Box preparation still invokes the installed controller,
-which installs/reuses remote Herdr and registers it locally. The new default
-connection does not open that UI, but preparation still has this dependency.
-Removing the field is not full removal of the coupling.
+The repository file currently declares project bindings, not complete workspace
+requirements. Box preparation still uses the separately installed controller.
+The updated controller accepts an explicit session-preparation flag: normal SSH,
+prepare-only, and agent login use tooling and repository setup without Herdr.
+Herdr transports, including auto from a Herdr pane, install its tooling/hooks,
+register the machine, and prepare a workspace. Older controller installations need the corresponding update;
+the private controller is still not distributed with this source repository.
 
-The default SSH shell also lacks disconnect persistence. Existing Herdr panes
-remain available explicitly. A provider-independent persistent shell transport
-that works within the user's current terminal is still required to complete the
-original resilience requirement without forcing a local UI.
+Private account bindings can select Box's GitHub integration or an explicit existing
+GitHub CLI account. The latter uses the native local account store, validates the
+account and repository, stages the credential in private remote RAM, and supplies
+native `GH_TOKEN` through a project-owned gh dispatcher. It does not copy the
+laptop's entire configuration directory, switch its active account, or narrow the
+existing token's permissions. This adapter remains private pending extraction;
+these fields are not part of the shared `.allset` manifest.
+
+SSH, PTY, and workspace handoffs validate the saved checkout's project, machine,
+role, and absolute directory. Auth and declared MCP preparation remain separate
+from terminal attachment. No running session is migrated and no takeover flag is added. Foreground
+process persistence is not promised by ordinary SSH; stopping the VM ends its
+processes regardless of connection interface.
+
+The workspace adapter creates or reuses one uniquely labeled remote workspace
+without focusing it or assuming a single pane. It reconciles creation failures
+against live state before considering another mutation. It then checks the
+caller's native machine catalog for the exact SSH alias and remote session,
+adds or enables that profile if needed, and prints the sidebar location. Native
+machine setup has no approval input, so it cannot approve replacing a server.
+Duplicate labels or target profiles fail rather than selecting one arbitrarily.
+`HERDR_CONFIG_PATH` selects the caller's catalog; outside Herdr without an
+override, the existing controller's dedicated catalog remains the fallback.
+The CLI exits without nesting another client, sending pane input, or starting
+an agent. Herdr 0.9.0 does not expose automatic machine selection for an existing
+client. Because the command returns, its attached credential-cache monitor does
+not continue running; native sign-in and the existing controller remain the
+account owners. Remote refresh durability across VM stop remains a limitation.
 
 A new manifest cannot yet bootstrap a new project's full local provider profile.
 Init records the project choices and reports incomplete setup. Next implement

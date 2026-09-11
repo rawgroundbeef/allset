@@ -30,7 +30,7 @@ var prepareBridge string
 //go:embed mcp.py
 var mcpBridge string
 
-var openBridge = terminal.Bridge + "\n" + mcpBridge + "\n" + prepareBridge
+var openBridge = terminal.Bridge + "\n" + terminal.WorkspaceBridge + "\n" + mcpBridge + "\n" + prepareBridge
 
 type Profile struct {
 	Name         string   `json:"name"`
@@ -206,10 +206,10 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 			plan.Interactive = true
 		} else {
 			if !terminal.Valid(attach) && attach != "terminal" {
-				return plan, errors.New("attachment must be herdr, ssh, none, or terminal")
+				return plan, errors.New("attachment must be workspace, herdr, ssh, none, or terminal")
 			}
 			plan.Args = []string{"-c", openBridge, controller, p.Name, fmt.Sprint(ttl), attach}
-			plan.Attachment, plan.Interactive = attach, attach != "none"
+			plan.Attachment, plan.Interactive = attach, attach != "none" && attach != "workspace"
 		}
 	case "connect", "stop":
 		if _, err := b.Machine(p); err != nil {
@@ -217,11 +217,11 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 		}
 		if operation == "connect" {
 			if !terminal.Valid(attach) && attach != "terminal" {
-				return plan, errors.New("attachment must be herdr, ssh, none, or terminal")
+				return plan, errors.New("attachment must be workspace, herdr, ssh, none, or terminal")
 			}
 			required = filepath.Join(controller, "project_shell.py")
 			plan.Args = []string{"-c", openBridge, controller, p.Name, "0", attach, "connect"}
-			plan.Attachment, plan.Interactive = attach, attach != "none"
+			plan.Attachment, plan.Interactive = attach, attach != "none" && attach != "workspace"
 		} else {
 			plan.Args = []string{filepath.Join(controller, "projects.py"), operation, p.Name}
 		}
