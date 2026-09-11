@@ -35,8 +35,8 @@ Without a file, bare interactive `allset` starts the guided onboarding flow.
 It uses an existing repository registration without asking the developer to
 reconfirm known values. For an unfamiliar repository it infers the origin, project
 name, and sole available compute service, then
-saves a strict project config. It then asks for private coding-client/account
-choices and continues through Box association, native sign-in, coding-only
+saves a strict project config. It then asks which coding clients to prepare and
+continues through Box association, native sign-in and verified account binding, coding-only
 repository preparation, integration application, and connection in one invocation.
 Named shortcuts and noninteractive use of saved registrations do not write a
 repository file. `allset init` reopens the review even when `.allset` exists;
@@ -93,7 +93,7 @@ or touches authentication.
 | Location | Purpose |
 | --- | --- |
 | Repository `.allset` | Shared identity/repository/compute, native MCPs, repository-relative skills, and named session secret requirements. |
-| Local project account profiles | Personal/work account choices, Infisical instance/org/project/principal and scoped credential references. Retained as private data under `~/.local/share/box-herdr`, separate from bundled controller code. |
+| Local project account profiles | Coding-client identities verified by native sign-in, Infisical instance/org/project/principal and scoped credential references. Retained as private data under `~/.local/share/box-herdr`, separate from bundled controller code. |
 | Secure credential store | Authentication material, supplied separately from source and templates. |
 | Local runtime state | Actual VM IDs, SSH identities, worktrees, panes, ports, setup revisions. |
 
@@ -131,8 +131,8 @@ shared configuration edits. They use the selected project's existing running
 Box and private account binding. An explicit project or alias can follow the
 client: `allset config claude dashboard`.
 
-Follow the native browser flow with the project's intended account. A successful
-native result is verified before AllSet saves that client's credentials. Failed,
+Follow the native browser flow and choose the account for this project. AllSet
+records the identity reported by native status before saving that client's credentials. Failed,
 cancelled or mismatched sign-ins remain marked for retry, and background capture
 cannot accept them. Use the same command to retry. VM preparation and missing
 account bindings remain separate: open with `allset` first, or use

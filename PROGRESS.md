@@ -8,7 +8,8 @@
   The occupied planning worktree and `feat/guided-onboarding` branch were
   preserved unchanged.
 - Bare interactive `allset` now continues from shared configuration review into
-  deliberate coding-client/account choices, private Box scope/account binding,
+  deliberate coding-client choice, native OAuth identity binding, private Box
+  scope/account binding,
   bounded compute consent, coding-only checkout preparation, native sign-ins,
   MCP/skill projection, scoped Infisical session values, and the selected caller
   handoff. Explicit `allset init`, inspection, status, diagnosis, and dry-run do
@@ -40,9 +41,11 @@
   native executable preservation, skill conflicts/supporting files, and scoped
   launch environment/argv/cwd behavior. A disposable real TTY checkout rendered
   `hello-world`, `octocat/hello-world · Box`, then all 3 coding agents with Codex
-  selected and `space select · ↑ up · ↓ down · enter submit`; Enter advanced to
-  the Codex account email. No project-name or single-provider prompt appeared.
-- **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built. The Linux
+  selected and `space select · ↑ up · ↓ down · enter submit`. A second real TTY
+  check advanced directly to private setup without a project-name, single-provider,
+  or coding-client account-email prompt, then cancelled without a provider call.
+- **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built in
+  `/private/tmp/allset-guided-release-20260911-11`. The Linux
   amd64 archive passed the network-disabled container proof: continuous setup and
   cancellation guards, bundled runtime, synthetic login restore, native MCP
   projection, terminal display, workspace reuse, work collection, and ownership
@@ -108,8 +111,9 @@
   up tools/repositories, restore other logins, or configure Infisical/GitHub/MCPs.
   Open a stopped or unprepared project first. Login no longer accepts `--ttl`.
 - The project lock spans native auth; the preparation spinner ends before the
-  client takes the terminal. The expected account is shown when configured.
-  Only an authenticated matching identity and usable selected-client credentials
+  client takes the terminal. First sign-in records the identity verified by native
+  status; later sign-ins enforce it. Only an authenticated matching identity and
+  usable selected-client credentials
   can replace that cache. Failed/cancelled sign-in retains previous credential
   material marked for retry. Attached monitors skip locked projects and pending
   logins, including after rejection; they cannot silently accept failed auth.

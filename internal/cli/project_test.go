@@ -190,7 +190,7 @@ func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/project.git"), nil
 	}
-	a.In = strings.NewReader("\nwork@example.test\n")
+	a.In = strings.NewReader("\n")
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -202,6 +202,7 @@ func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 		t.Fatal("guided setup did not dispatch onboarding", *plans)
 	}
 	if strings.Contains(out.String(), "Project name") || strings.Contains(out.String(), "Compute provider") ||
+		strings.Contains(out.String(), "account email") ||
 		!strings.Contains(out.String(), "project\nnew/project · Box\n\nCoding agents\n") ||
 		!strings.Contains(out.String(), "Enter one or more names, separated by commas.\nAgents [codex]:") ||
 		strings.Contains(out.String(), "How would you like to continue?") {
@@ -332,11 +333,11 @@ func TestInteractiveOpenContinuesOnboardingAfterConfigurationOnlyInit(t *testing
 	}); err != nil {
 		t.Fatal(err)
 	}
-	a.In = strings.NewReader("codex\nwork@example.test\n")
+	a.In = strings.NewReader("codex\n")
 	if code := a.Run(context.Background(), nil); code != 0 || len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
 		t.Fatal(code, out.String(), *plans)
 	}
-	if !strings.Contains(out.String(), "Coding agents") {
+	if !strings.Contains(out.String(), "Coding agents") || strings.Contains(out.String(), "account email") {
 		t.Fatal("missing private onboarding choices", out.String())
 	}
 }

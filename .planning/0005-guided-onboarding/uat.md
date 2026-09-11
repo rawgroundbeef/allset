@@ -58,7 +58,7 @@ before handoff; it is not a prerequisite for allocating the first environment.
    required secret delivery are already in place. No separate AllSet config,
    MCP sync, credential copy, or secret-wrapper command is required.
 6. **Prove the session works.** In an authorized real check, obtain a minimal
-   native model response using the expected account. Discover and call the
+   native model response using the OAuth-verified account. Discover and call the
    configured harmless MCP tool from this target session. Invoke the fixture
    skill and observe its non-secret marker. Let a harmless command or MCP use
    the test secret, reporting only success/failure, never its value.

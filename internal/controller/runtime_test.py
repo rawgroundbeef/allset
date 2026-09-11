@@ -151,12 +151,15 @@ class RuntimeTests(unittest.TestCase):
                         ssh.assert_not_called()
 
     def test_native_sign_in_verifies_identity_and_caches_only_selected_client(self):
-        for outcome in ('success', 'failed', 'wrong-account', 'unverified', 'missing-credentials', 'extra-client'):
+        for outcome in ('success', 'failed', 'wrong-account', 'unverified', 'unsafe-identity',
+                        'missing-credentials', 'extra-client'):
             with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as tmp:
                 controller = types.SimpleNamespace(STATE=Path(tmp))
-                profile = {'name': 'dashboard', 'agent_profile': 'work'}
+                profile = {'name': 'dashboard', 'agent_profile': 'work', 'clients': ['claude']}
                 owner = {'project': 'dashboard', 'ssh_alias': 'box-dashboard'}
-                binding = {'name': 'work', 'providers': {'claude': {'account_email': 'work@example.test'}}}
+                binding = {'version': 1, 'name': 'work', 'providers': {
+                    'claude': {'account_email': 'work@example.test'} if outcome == 'wrong-account' else {}}}
+                agent_auth.private_write(Path(tmp) / 'agent-profiles/work/profile.json', binding)
                 other = agent_auth.cache_path(controller, profile, 'codex')
                 agent_auth.private_write(other, {'fixture': 'other login unchanged'})
                 before = other.read_bytes()
@@ -166,25 +169,30 @@ class RuntimeTests(unittest.TestCase):
                 agent_auth.private_write(selected, {'project': 'dashboard', 'profile': 'work',
                                                      'provider': 'claude', 'contents': old_credential})
                 identity = {'logged_in': outcome != 'unverified',
-                            'email': 'personal@example.test' if outcome == 'wrong-account' else 'work@example.test'}
+                            'email': ('personal@example.test' if outcome == 'wrong-account'
+                                      else 'bad\x1b[31m@example.test' if outcome == 'unsafe-identity'
+                                      else 'work@example.test')}
                 response = {} if outcome == 'missing-credentials' else {'claude': credential}
                 if outcome == 'extra-client': response['codex'] = {'tokens': {'access_token': 'unexpected'}}
                 with patch.object(agent_auth, 'config', return_value=binding), \
                      patch.object(agent_auth.subprocess, 'call', return_value=9 if outcome == 'failed' else 0) as native, \
                      patch.object(agent_auth, 'native_identity', return_value=identity) as verify, \
                      patch.object(agent_auth, 'exchange', return_value=response) as exchange:
-                    if outcome in ('wrong-account', 'unverified', 'missing-credentials', 'extra-client'):
+                    if outcome in ('wrong-account', 'unverified', 'unsafe-identity', 'missing-credentials', 'extra-client'):
                         with self.assertRaises(RuntimeError):
                             agent_auth.login(controller, owner, profile, 'claude')
                     else:
                         self.assertEqual(agent_auth.login(controller, owner, profile, 'claude'), 9 if outcome == 'failed' else 0)
-                    self.assertIn('claude auth login --claudeai --email work@example.test', native.call_args.args[0][-1])
+                    self.assertIn('claude auth login --claudeai', native.call_args.args[0][-1])
+                    self.assertNotIn('--email', native.call_args.args[0][-1])
                     if outcome == 'success':
                         request = exchange.call_args.args[2]
                         self.assertEqual(set(request['files']), {'claude'})
                         saved = agent_auth.read_private(selected)
                         self.assertEqual(saved['contents'], credential)
                         self.assertEqual(saved['project'], 'dashboard')
+                        saved_binding = agent_auth.read_private(Path(tmp) / 'agent-profiles/work/profile.json')
+                        self.assertEqual(saved_binding['providers']['claude']['account_email'], 'work@example.test')
                     else:
                         expected_reads = 1 if outcome in ('missing-credentials', 'extra-client') else 0
                         self.assertEqual(exchange.call_count, expected_reads)
@@ -195,6 +203,17 @@ class RuntimeTests(unittest.TestCase):
                         self.assertEqual(exchange.call_count, expected_reads)  # No later monitor accepts the rejected login.
                     if outcome == 'failed': verify.assert_not_called()
                     self.assertEqual(other.read_bytes(), before)
+
+    def test_native_sign_in_rejects_unselected_client_before_authentication(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller = types.SimpleNamespace(STATE=Path(tmp))
+            profile = {'name': 'dashboard', 'agent_profile': 'work', 'clients': ['codex']}
+            binding = {'version': 1, 'name': 'work', 'providers': {'codex': {}}}
+            agent_auth.private_write(Path(tmp) / 'agent-profiles/work/profile.json', binding)
+            with patch.object(agent_auth.subprocess, 'call') as native:
+                with self.assertRaisesRegex(ValueError, 'not selected'):
+                    agent_auth.login(controller, {'project': 'dashboard'}, profile, 'claude')
+            native.assert_not_called()
 
     def test_forwarded_ssh_endpoint_and_invalid_endpoint(self):
         self.assertEqual(c.ssh_destination({'sshEndpoint': '127.0.0.1:2200'}), ('127.0.0.1', 2200))
@@ -370,7 +389,7 @@ class RuntimeTests(unittest.TestCase):
             controller = types.SimpleNamespace(STATE=root, BOX=Path('/fake/box'), BoxCommandError=FakeBoxError,
                                                box=box, check_allowance=lambda *args, **kwargs: None)
             request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'},
-                       'clients': [{'client': 'codex', 'expected_account': 'work@example.test'}]}
+                       'clients': [{'client': 'codex'}]}
             environment = []
             with patch('builtins.input', side_effect=['', '', 'personal-org', 'yes']):
                 profile, clients = onboarding.ensure_profile(controller, request)
@@ -380,9 +399,30 @@ class RuntimeTests(unittest.TestCase):
             saved_journal = json.loads((root / 'projects/dashboard/onboarding.json').read_text())
             self.assertEqual(saved_journal['stage'], 'profile-saved')
             self.assertEqual(saved_journal['account_identity'], {'email': 'box@example.test'})
+            self.assertEqual(saved_journal['providers'], {'codex': {}})
+            saved_agents = json.loads((root / 'agent-profiles/dashboard-agents/profile.json').read_text())
+            self.assertEqual(saved_agents['providers'], {'codex': {}})
             foreign = types.SimpleNamespace(box=lambda *args: {'account': {'email': 'other@example.test'}})
             with self.assertRaisesRegex(ValueError, 'does not match'):
                 onboarding.verify_provider_binding(foreign, profile)
+
+    def test_existing_profile_with_unverified_identity_still_requires_native_login(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            profile = {'name': 'dashboard', 'repository': 'acme/dashboard',
+                       'agent_profile': 'dashboard-agents', 'clients': ['codex']}
+            agent_auth.private_write(root / 'projects/dashboard/profile.json', profile)
+            agent_auth.private_write(root / 'agent-profiles/dashboard-agents/profile.json', {
+                'version': 1, 'name': 'dashboard-agents', 'providers': {'codex': {}}})
+            agent_auth.private_write(root / 'credentials/dashboard/agents/codex.json', {
+                'project': 'dashboard', 'profile': 'dashboard-agents', 'provider': 'codex',
+                'contents': {'tokens': {'access_token': 'synthetic-access'}}})
+            controller = types.SimpleNamespace(STATE=root)
+            request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'}}
+            with patch.object(onboarding, 'validate', side_effect=lambda value: value):
+                saved, pending = onboarding.ensure_profile(controller, request)
+            self.assertEqual(saved, profile)
+            self.assertEqual(pending, ['codex'])
 
     def test_interrupted_onboarding_rejects_a_different_box_identity(self):
         with tempfile.TemporaryDirectory() as tmp:

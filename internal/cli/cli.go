@@ -77,9 +77,8 @@ Projects/status/doctor and dry-run accept --json. Doctor exits 2 for incomplete
 checks, 1 for failures. --config PATH must precede the command.
 
 Without .allset, interactive open uses the repository identity and default compute,
-then asks for selected coding
-clients and their intended accounts, then continues into the private Box setup and
-native sign-in flow. Existing valid setup is reused. Explicit allset init only reviews
+then asks which coding clients to prepare and continues into their native sign-in
+flows and private Box setup. Existing valid setup is reused. Explicit allset init only reviews
 configuration. Read-only commands and dry-run never create configuration or sign in.
 
 Box is the first compute backend. Its current workspace strategy delegates setup
@@ -399,7 +398,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 			if validateErr := backend.Validate(p); validateErr == nil {
 				plan, setupErr = backend.Plan(p, "open", "", ttl, attach)
 			} else if onboarder, ok := backend.(strategy.Onboarder); ok {
-				var clients []strategy.ClientBinding
+				var clients []strategy.ClientSelection
 				clients, setupErr = a.onboardingClients(reader, p)
 				if setupErr == nil {
 					plan, setupErr = onboarder.OnboardingPlan(p, clients, ttl, attach)

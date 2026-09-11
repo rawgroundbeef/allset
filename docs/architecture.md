@@ -170,8 +170,8 @@ The Box strategy requires a valid saved owner; runtime rechecks ownership and
 live state before SSH and filesystem readiness. Login cannot create/resume a
 machine or apply unrelated accounts/services. It holds the project operation
 lock through native auth, with the progress display released before the client
-owns stdin. The native result and expected account determine whether the selected
-credential is cached. A pending/rejected login remains marked `needs_login`;
+owns stdin. First sign-in binds the identity reported by native status; later
+sign-ins must match it before the selected credential is cached. A pending/rejected login remains marked `needs_login`;
 automatic credential collection skips it until verified explicit sign-in.
 Attached monitors also skip capture while another project operation holds the
 lock. No shared source credential or other client's cache is rewritten by login.

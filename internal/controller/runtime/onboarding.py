@@ -89,17 +89,22 @@ def _providers(items):
     for item in items or []:
         client = item.get('client') if isinstance(item, dict) else None
         expected = item.get('expected_account') if isinstance(item, dict) else None
-        if client not in agent_auth.REMOTE_FILES or client in providers or not isinstance(expected, str) or not expected.strip():
+        if (client not in agent_auth.REMOTE_FILES or client in providers
+                or set(item) - {'client', 'expected_account'}
+                or (expected is not None and (not isinstance(expected, str) or '@' not in expected))):
             raise ValueError('Invalid private coding-client selection')
-        providers[client] = {'account_email': expected.strip()}
+        # Older interrupted requests may include an email hint. New onboarding
+        # binds identity only after native authentication verifies it.
+        providers[client] = {'account_email': expected.strip()} if expected else {}
     return providers
 
 
 def _journal_providers(value):
     providers = value.get('providers') or {}
     if (not isinstance(providers, dict) or not providers or set(providers) - set(agent_auth.REMOTE_FILES)
-            or any(not isinstance(item, dict) or set(item) != {'account_email'}
-                   or not isinstance(item['account_email'], str) or not item['account_email'].strip()
+            or any(not isinstance(item, dict) or set(item) - {'account_email'}
+                   or ('account_email' in item and (not isinstance(item['account_email'], str)
+                                                    or not item['account_email'].strip()))
                    for item in providers.values())):
         raise ValueError('Onboarding journal has invalid coding-client choices')
     return providers
@@ -132,7 +137,9 @@ def ensure_profile(controller, request):
         for client in existing.get('clients') or []:
             path = agent_auth.cache_path(controller, existing, client)
             cached = agent_auth.read_private(path) if path.exists() else {}
-            if cached.get('needs_login') or not agent_auth.has_login(client, cached.get('contents')):
+            selected = binding.get('providers', {}).get(client, {})
+            if (not selected.get('account_email') or cached.get('needs_login')
+                    or not agent_auth.has_login(client, cached.get('contents'))):
                 pending.append(client)
         return existing, pending
     journal_path = controller.STATE / 'projects' / name / 'onboarding.json'

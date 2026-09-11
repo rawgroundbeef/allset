@@ -38,7 +38,7 @@ func (a App) setupReader() (*bufio.Reader, error) {
 	return bufio.NewReader(io.LimitReader(a.In, 8192)), nil
 }
 
-func (a App) onboardingClients(reader *bufio.Reader, p config.Project) ([]strategy.ClientBinding, error) {
+func (a App) onboardingClients(reader *bufio.Reader, p config.Project) ([]strategy.ClientSelection, error) {
 	if reader == nil {
 		return nil, errors.New("first-time onboarding needs an interactive terminal")
 	}
@@ -59,22 +59,14 @@ func (a App) onboardingClients(reader *bufio.Reader, p config.Project) ([]strate
 		return nil, err
 	}
 	seen := map[string]bool{}
-	clients := []strategy.ClientBinding{}
+	clients := []strategy.ClientSelection{}
 	for _, item := range selected {
 		client := strings.TrimSpace(strings.ToLower(item))
 		if (client != "codex" && client != "claude" && client != "cursor") || seen[client] {
 			return nil, errors.New("coding clients must uniquely select codex, claude, or cursor")
 		}
 		seen[client] = true
-		labels := map[string]string{"codex": "Codex", "claude": "Claude", "cursor": "Cursor"}
-		account, err := setupAnswer(reader, a.Out, labels[client]+" account email", "")
-		if err != nil {
-			return nil, err
-		}
-		if !strings.Contains(account, "@") || strings.ContainsAny(account, "\x00\r\n") {
-			return nil, errors.New("each coding client needs the account email you intend to use")
-		}
-		clients = append(clients, strategy.ClientBinding{Client: client, ExpectedAccount: account})
+		clients = append(clients, strategy.ClientSelection{Client: client})
 	}
 	return clients, nil
 }

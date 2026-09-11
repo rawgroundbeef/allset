@@ -76,6 +76,14 @@ measure stages. No numerical SLA or process survival across VM stop is promised.
 A failed/abandoned connection stays pending; retry continues at the affected
 stage. It must not create a duplicate machine or overwrite unrelated accounts.
 
+### D-11 — Native authentication establishes coding-client identity
+
+Do not ask the developer to type an account email before signing in. Selecting a
+coding client starts that client's native OAuth or browser authentication. AllSet
+then reads the public identity from native status and records it in the private
+project binding. Later sign-ins must match that verified identity before AllSet
+caches credentials. A credential without a verified identity remains pending.
+
 ## Superseded planning
 
 ### D-05 — App and preview required: superseded by D-07

@@ -5,6 +5,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -17,14 +18,10 @@ REMOTE_FILES = {'codex': '.codex/auth.json', 'claude': '.claude/.credentials.jso
                 'cursor': '.config/cursor/auth.json'}
 
 
-def login_command(provider, binding):
-    """Use the provider's native browser flow, with only a configured email hint."""
+def login_command(provider):
+    """Use each provider's native interactive authentication flow."""
     if provider == 'claude':
-        args = ['claude', 'auth', 'login', '--claudeai']
-        email = binding.get('providers', {}).get(provider, {}).get('account_email')
-        if email:
-            args += ['--email', email]
-        return args
+        return ['claude', 'auth', 'login', '--claudeai']
     if provider == 'codex':
         return ['codex', 'login']
     if provider == 'cursor':
@@ -184,6 +181,24 @@ def require_login(controller, profile, provider):
     private_write(path, value)
 
 
+def bind_verified_identity(controller, binding, provider, email):
+    """Bind only identity returned by native status, preserving later mismatch checks."""
+    path = controller.STATE / 'agent-profiles' / binding['name'] / 'profile.json'
+    current = read_private(path)
+    if current.get('name') != binding['name']:
+        raise ValueError('Agent profile name does not match its registry entry')
+    providers = current.get('providers') or {}
+    selected = providers.get(provider)
+    if not isinstance(selected, dict):
+        raise ValueError('Coding client is not selected for this project')
+    expected = selected.get('account_email')
+    if expected and expected.casefold() != email.casefold():
+        raise RuntimeError('Signed in as ' + email + ', but this project is bound to ' + expected +
+                           '. Repeat the native sign-in with the project account; login was not cached.')
+    selected['account_email'] = email
+    private_write(path, current)
+
+
 def print_accounts(controller, profile):
     """Show saved account bindings without claiming that cached tokens passed a live request."""
     import progress
@@ -194,7 +209,7 @@ def print_accounts(controller, profile):
         path = cache_path(controller, profile, provider)
         cached = read_private(path) if path.exists() else {}
         selected = binding.get('providers', {}).get(provider, {})
-        label = selected.get('account_email', binding['name'])
+        label = selected.get('account_email', 'account not verified')
         state = 'saved login' if has_login(provider, cached.get('contents')) else 'sign-in needed'
         if cached.get('logged_out') or cached.get('needs_login'):
             state = 'sign-in needed'
@@ -212,6 +227,10 @@ def login(controller, meta, profile, provider):
         raise ValueError('Refusing to sign in on a different project Box')
     if provider not in REMOTE_FILES:
         raise ValueError('Unsupported agent credential provider')
+    selected = binding.get('providers', {}).get(provider)
+    if not isinstance(selected, dict):
+        raise ValueError(provider.title() + ' is not selected for this project; no sign-in started')
+    expected = selected.get('account_email')
     path = cache_path(controller, profile, provider)
     pending = read_private(path) if path.exists() else {
         'project': profile['name'], 'profile': binding['name'], 'provider': provider}
@@ -221,30 +240,30 @@ def login(controller, meta, profile, provider):
     pending['needs_login'] = True
     private_write(path, pending)
     print('Sign in to ' + provider + ' for ' + profile['name'] + ' (' + binding['name'] + ').', flush=True)
-    expected = binding.get('providers', {}).get(provider, {}).get('account_email')
-    if expected:
-        print('Use this account: ' + expected, flush=True)
     print('Open the link in your local browser. Use the account for this project.', flush=True)
     args = ['ssh', '-tt']
     if provider == 'codex':
         # Native browser auth works for organizations that disable device codes.
         args += ['-o', 'ExitOnForwardFailure=yes', '-L', '127.0.0.1:1455:127.0.0.1:1455']
-    args += [meta['ssh_alias'], shlex.join(login_command(provider, binding))]
+    args += [meta['ssh_alias'], shlex.join(login_command(provider))]
     result = subprocess.call(args)
     if result == 0:
         identity = native_identity(controller, meta, provider)
-        if not identity.get('logged_in') or not identity.get('email'):
+        email = identity.get('email')
+        if (not identity.get('logged_in') or not isinstance(email, str) or len(email) > 254
+                or not re.fullmatch(r'[^\s@\x00-\x1f\x7f]+@[^\s@\x00-\x1f\x7f]+', email)):
             raise RuntimeError('Could not verify the signed-in account; login was not cached.')
-        if expected and identity['email'].casefold() != expected.casefold():
-            raise RuntimeError('Signed in as ' + identity['email'] + ', but this project expects ' + expected +
+        if expected and email.casefold() != expected.casefold():
+            raise RuntimeError('Signed in as ' + email + ', but this project expects ' + expected +
                                '. Repeat the native sign-in with the intended account; login was not cached.')
+        bind_verified_identity(controller, binding, provider, email)
         capture(controller, meta, profile, [provider], authenticated=True)
         path = cache_path(controller, profile, provider)
         saved = read_private(path) if path.exists() else {}
         if not has_login(provider, saved.get('contents')):
             require_login(controller, profile, provider)
             raise RuntimeError('Sign-in ended without a saved provider credential; inspect the native login result.')
-        print(provider + ' login saved for ' + profile['name'] + ' as ' + identity['email'] + '.', flush=True)
+        print(provider + ' login saved for ' + profile['name'] + ' as ' + email + '.', flush=True)
     return result
 
 

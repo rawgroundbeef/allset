@@ -27,17 +27,16 @@ type Diagnosis struct {
 	Checks  []Check `json:"checks"`
 }
 
-// ClientBinding is a deliberate private account choice. It is passed only to
-// an executing interactive onboarding plan; credential material stays native.
-type ClientBinding struct {
-	Client          string `json:"client"`
-	ExpectedAccount string `json:"expected_account"`
+// ClientSelection is a deliberate private client choice. Native authentication
+// establishes the account identity; credential material stays native.
+type ClientSelection struct {
+	Client string `json:"client"`
 }
 
 // Onboarder is implemented by strategies that can create a missing private
 // project binding. Keeping it separate preserves the read-only Strategy contract.
 type Onboarder interface {
-	OnboardingPlan(config.Project, []ClientBinding, int, string) (execution.Plan, error)
+	OnboardingPlan(config.Project, []ClientSelection, int, string) (execution.Plan, error)
 }
 
 // Strategy is the contract consumed by the CLI. Implementations must keep Validate,

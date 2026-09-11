@@ -124,7 +124,7 @@ func TestPlanTargetsIntendedProjectAndCollectOwnership(t *testing.T) {
 func TestOnboardingPlanAllowsOnlyMissingOrJournaledPrivateSetup(t *testing.T) {
 	b := Backend{Root: t.TempDir(), Python: "/usr/bin/python3"}
 	p := config.Project{Name: "dashboard", Repository: "acme/dashboard", Backend: "box"}
-	plan, err := b.OnboardingPlan(p, []strategy.ClientBinding{{Client: "codex", ExpectedAccount: "work@example.test"}}, 7200, "none")
+	plan, err := b.OnboardingPlan(p, []strategy.ClientSelection{{Client: "codex"}}, 7200, "none")
 	if err != nil || plan.Operation != "onboard" || !plan.Interactive || !strings.Contains(strings.Join(plan.Args, " "), `"client":"codex"`) {
 		t.Fatal(plan, err)
 	}

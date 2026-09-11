@@ -62,7 +62,7 @@ func (s Strategy) Plan(p config.Project, operation, agent string, ttl int, attac
 	return s.Controller.Plan(p, operation, agent, ttl, attach)
 }
 
-func (s Strategy) OnboardingPlan(p config.Project, clients []strategy.ClientBinding, ttl int, attach string) (execution.Plan, error) {
+func (s Strategy) OnboardingPlan(p config.Project, clients []strategy.ClientSelection, ttl int, attach string) (execution.Plan, error) {
 	if p.Backend != "box" {
 		return execution.Plan{}, errors.New("Box strategy received a different backend")
 	}

@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/rawgroundbeef/allset/internal/config"
@@ -297,7 +296,7 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 	return plan, nil
 }
 
-func (b Backend) OnboardingPlan(p config.Project, clients []strategy.ClientBinding, ttl int, attach string) (Plan, error) {
+func (b Backend) OnboardingPlan(p config.Project, clients []strategy.ClientSelection, ttl int, attach string) (Plan, error) {
 	plan := Plan{Project: p.Name, Operation: "onboard", Backend: "box", Executable: b.Python,
 		Attachment: attach, Interactive: true}
 	if _, err := b.CheckBinding(p); err == nil {
@@ -328,14 +327,11 @@ func (b Backend) OnboardingPlan(p config.Project, clients []strategy.ClientBindi
 		if (binding.Client != "claude" && binding.Client != "codex" && binding.Client != "cursor") || seen[binding.Client] {
 			return plan, errors.New("clients must uniquely select claude, codex, or cursor")
 		}
-		if !strings.Contains(strings.TrimSpace(binding.ExpectedAccount), "@") || strings.ContainsAny(binding.ExpectedAccount, "\x00\r\n") {
-			return plan, errors.New("each selected client requires its expected account email")
-		}
 		seen[binding.Client] = true
 	}
 	payload, err := json.Marshal(struct {
-		Project config.Project           `json:"project"`
-		Clients []strategy.ClientBinding `json:"clients"`
+		Project config.Project             `json:"project"`
+		Clients []strategy.ClientSelection `json:"clients"`
 	}{p, clients})
 	if err != nil {
 		return plan, err
