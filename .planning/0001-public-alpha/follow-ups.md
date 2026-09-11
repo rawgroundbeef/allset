@@ -17,6 +17,9 @@
 
 ## Next configuration slices
 
+- Guided first-run setup entered through bare `allset`, usable with any coding
+  agent. The configuration walkthrough exists; complete private account/provider
+  setup and decide whether the CLI should launch the chosen setup agent.
 - Shared tools/setup/services/skills with explicit trust before executing code.
 - Private account bindings across Infisical instances, agent identities, GitHub,
   and MCP services; supported expiry/renewal without cross-project fallback.

@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import pty
 import shutil
 import subprocess
 import tarfile
@@ -25,8 +26,18 @@ def calls():
     return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
 
 
-def cli(*args, ok=True, contains=None):
-    result = subprocess.run(['allset', *args], capture_output=True, text=True, timeout=45)
+def cli(*args, ok=True, contains=None, cwd=None, terminal=False, answers=None):
+    master, slave = pty.openpty() if terminal else (None, None)
+    try:
+        if answers is not None:
+            assert terminal
+            os.write(master, answers.encode())
+        result = subprocess.run(['allset', *args], stdin=slave, cwd=cwd,
+                                capture_output=True, text=True, timeout=45)
+    finally:
+        if terminal:
+            os.close(master)
+            os.close(slave)
     output = result.stdout + result.stderr
     assert 'synthetic-access' not in output and 'synthetic-refresh' not in output
     # Dry-run contains bundled code; only print bounded output on failure.
@@ -90,7 +101,27 @@ cli('open', 'dashboard', '--attach', 'none', '--dry-run', '--json')
 assert not cache.exists() and not calls(), 'Inspection executed or installed the controller'
 print('PASS: inspection and dry-run leave runtime and providers untouched', flush=True)
 
-cli('open', 'dashboard', '--attach', 'none', contains='Project prepared: dashboard.')
+unfamiliar = home / 'unfamiliar'
+unfamiliar.mkdir()
+subprocess.run(['git', 'init', '--quiet', str(unfamiliar)], check=True)
+subprocess.run(['git', '-C', str(unfamiliar), 'remote', 'add', 'origin', 'https://github.com/example/unfamiliar.git'], check=True)
+output = cli(cwd=unfamiliar, terminal=True, answers='\n\n', ok=False, contains='environment setup is still incomplete')
+assert 'allset config guide' in output and '1/2 Project name' in output
+assert json.loads((unfamiliar / '.allset').read_text())['name'] == 'unfamiliar'
+assert not cache.exists() and not calls()
+print('PASS: unfamiliar repo enters the walkthrough; missing account/provider setup stays incomplete', flush=True)
+
+assert not (checkout / '.allset').exists()
+before_registry = (home / '.config/allset/config.json').read_bytes()
+cli('--attach', 'none', cwd=checkout, terminal=True, contains='Project prepared: dashboard.')
+manifest = json.loads((checkout / '.allset').read_text())
+assert manifest['name'] == 'dashboard' and manifest['repository'] == 'example/dashboard'
+assert manifest['mcps']['docs']['url'] == 'https://docs.example.test/mcp'
+before_manifest = (checkout / '.allset').read_bytes()
+assert 'Project setup:' not in cli('--attach', 'none', cwd=checkout, terminal=True)
+assert (checkout / '.allset').read_bytes() == before_manifest
+assert (home / '.config/allset/config.json').read_bytes() == before_registry
+print('PASS: bare allset creates a missing project config once and opens the saved environment', flush=True)
 assert cache.is_dir() and not (state / 'controller').exists()
 assert json.loads((home / '.codex/auth.json').read_text()) == json.loads(source.read_text())
 assert 'fixture-model' in (home / '.codex/config.toml').read_text()

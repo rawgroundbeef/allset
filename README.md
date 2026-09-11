@@ -44,16 +44,24 @@ credentials, machine records, and native Herdr installation.
 ## Configure a project
 
 ```sh
-allset init
+allset                       # Start setup if .allset is missing, otherwise open
 allset config show
 allset config validate --project
 allset --dry-run --json
 ```
 
-An agent can inspect the repository and use `allset config guide` to help write
-the configuration with you. `init` infers the Git origin and reuses a saved
-project binding when available. It never replaces an existing file or creates a
-VM. Missing provider setup is reported as incomplete.
+Run `allset` in the project for the guided configuration walkthrough. When
+`.allset` is missing, interactive open starts setup: it infers the Git origin,
+reuses saved project settings when available, or asks for the project name and
+compute provider. It saves `.allset` and continues opening when the environment
+is configured. Later runs use that file without repeating setup.
+
+To work with your preferred coding agent, ask it to run `allset config guide`
+in this repository and walk through the supported configuration with you.
+`allset init` remains an explicit configuration-only command for agents and
+scripts. It never replaces an existing file or creates a VM. The current
+walkthrough covers project configuration; missing provider/account setup is
+still reported as incomplete.
 
 ```json
 {

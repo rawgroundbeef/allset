@@ -28,3 +28,19 @@ Accepted 2026-09-09.
 Still to implement: standalone provider setup, complete shared requirements,
 credential renewal contracts, persistent default connections, npm packaging and
 trusted-publisher bootstrap. See [follow-ups](follow-ups.md).
+
+## First-run entry point — 2026-09-11
+
+- User decision: `allset` starts setup when the project has no configuration
+  file; users do not need to know a separate `init` command. Setup should guide
+  them and be usable with their preferred coding agent.
+- Current implementation: interactive current-project open creates `.allset`
+  even when a local registry binding already exists. Saved settings are reused;
+  unfamiliar projects receive explanations, suggested name/provider choices,
+  and instructions for an agent to use `allset config guide`. Existing files,
+  private account bindings, named shortcuts and read-only behavior are preserved.
+- Working UX assumption: terminal walkthrough plus an agent-readable guide.
+  Whether AllSet should also launch a selected agent remains an unanswered
+  product question; no automatic agent-launch behavior is inferred.
+- Full account/provider setup remains incomplete. The walkthrough must say so
+  when it saves project configuration without a usable environment binding.

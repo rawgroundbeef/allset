@@ -31,11 +31,16 @@ or invalid file never falls back to some other saved project.
 `init` preserves an existing `.allset` unchanged. Schema exports are named
 `allset.schema.json`.
 
-Without a file, an existing repository registration still opens immediately.
-`allset init` materializes that registration in the repository without changing
-accounts, runtime state, or existing files. For an unfamiliar repository, bare
-interactive `allset` runs the same setup flow: infer the origin, ask for a name
-and compute service, and save a strict project config. New native provider setup
+Without a file, bare interactive `allset` starts the guided configuration flow.
+It materializes an existing repository registration without asking again or
+changing account bindings. For an unfamiliar repository it explains shared and
+private settings, infers the origin, asks for a name and compute service, and
+saves a strict project config. It then continues opening the environment.
+Named shortcuts and noninteractive use of saved registrations do not write a
+repository file. `allset init` runs configuration setup without opening.
+
+Any coding agent can use `allset config guide` to help with this walkthrough;
+the user chooses the agent. New native provider setup
 is not implemented yet, so a missing local Box profile is reported as incomplete
 and no VM is provisioned. Dry runs and read-only commands never run this flow.
 

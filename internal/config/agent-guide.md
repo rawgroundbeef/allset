@@ -38,6 +38,16 @@ allset config validate --project
 allset --dry-run --json
 ```
 
+The normal human entry point is bare `allset`: without a `.allset` file,
+interactive open starts the configuration walkthrough automatically, including
+for a repository that already has a saved registration. It continues opening
+when the environment is configured. Do not require users to remember `init`.
+
+For agent-assisted setup, inspect the supported schema and existing bindings,
+explain what you inferred, and ask only for missing project/provider choices.
+Use the explicit init command below to save those agreed choices. Clearly report
+missing provider/account setup; a saved file does not finish the environment.
+
 Init reuses an existing registration; otherwise it asks for project name/provider.
 It creates a file without replacing one or provisioning compute. An authorized
 agent can use `allset init --name NAME --backend box --yes` to avoid interactive

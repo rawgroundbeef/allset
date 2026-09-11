@@ -89,6 +89,70 @@ func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) 
 	}
 }
 
+func TestBareOpenCreatesMissingManifestFromSavedBindingAndContinues(t *testing.T) {
+	for _, args := range [][]string{nil, {"."}, {"open"}, {"open", "."}} {
+		a, out, plans := appFixture(t)
+		root := a.CurrentDir
+		a.CurrentDir = filepath.Join(root, "apps", "admin")
+		if err := os.MkdirAll(a.CurrentDir, 0700); err != nil {
+			t.Fatal(err)
+		}
+		registry, err := config.Load(a.ConfigPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.ReadFile(a.ConfigPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input := strings.NewReader("must not be consumed\n")
+		a.In = input
+		if code := a.Run(context.Background(), args); code != 0 {
+			t.Fatal(args, code, out.String())
+		}
+		manifest, err := config.LoadProject(filepath.Join(root, config.ProjectFilename))
+		if err != nil || manifest.Name != registry.Projects[0].Name || manifest.Repository != registry.Projects[0].Repository ||
+			manifest.Backend != registry.Projects[0].Backend || strings.Join(manifest.Aliases, ",") != "joy" {
+			t.Fatal("saved project binding was not preserved", manifest, err)
+		}
+		if len(*plans) != 1 || (*plans)[0].Project != manifest.Name || input.Len() != len("must not be consumed\n") {
+			t.Fatal("open did not reuse its saved binding without questions")
+		}
+		after, _ := os.ReadFile(a.ConfigPath)
+		if !bytes.Equal(before, after) || strings.Contains(out.String(), "SECRET") {
+			t.Fatal("registration changed or private data leaked")
+		}
+		if _, err := os.Stat(filepath.Join(a.CurrentDir, config.ProjectFilename)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("config was not bounded to the project root")
+		}
+	}
+}
+
+func TestOnlyInteractiveCurrentProjectOpenCreatesMissingManifest(t *testing.T) {
+	for _, args := range [][]string{{"--dry-run", "--json"}, {"status", "--cached"}, {"doctor", "--offline"}, {"dashboard"}} {
+		a, out, _ := appFixture(t)
+		want := 0
+		if args[0] == "doctor" {
+			want = 1 // The fixture intentionally lacks the native Box executable.
+		}
+		if code := a.Run(context.Background(), args); code != want {
+			t.Fatal(args, code, out.String())
+		}
+		if _, err := os.Stat(filepath.Join(a.CurrentDir, config.ProjectFilename)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("read-only or named command wrote a repository manifest", args, err)
+		}
+	}
+	// Preserve scripted use of existing registrations without an implicit write.
+	a, out, plans := appFixture(t)
+	a.Interactive = false
+	if code := a.Run(context.Background(), []string{"--attach", "none"}); code != 0 || len(*plans) != 1 {
+		t.Fatal(code, out.String())
+	}
+	if _, err := os.Stat(filepath.Join(a.CurrentDir, config.ProjectFilename)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("noninteractive open wrote a repository manifest", err)
+	}
+}
+
 func TestMissingConfigEntersSetupAndReportsUnimplementedProviderPreparation(t *testing.T) {
 	a, out, plans := appFixture(t)
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
@@ -105,8 +169,9 @@ func TestMissingConfigEntersSetupAndReportsUnimplementedProviderPreparation(t *t
 	if len(*plans) != 0 {
 		t.Fatal("incomplete setup launched a VM")
 	}
-	if !strings.Contains(out.String(), "Compute provider") {
-		t.Fatal("setup did not run")
+	if !strings.Contains(out.String(), "Compute provider") || !strings.Contains(out.String(), "allset config guide") ||
+		!strings.Contains(out.String(), "Account choices and credentials stay private") {
+		t.Fatal("guided setup or agent instructions were missing")
 	}
 }
 

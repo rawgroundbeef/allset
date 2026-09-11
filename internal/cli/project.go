@@ -108,10 +108,13 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 	if known != nil && !errors.Is(known, config.ErrUnregistered) {
 		return p, known
 	}
+	fmt.Fprintf(a.Out, "Project setup: %s\n", repo)
+	fmt.Fprintln(a.Out, "Shared project settings go in .allset. Account choices and credentials stay private.")
 	if known == nil {
 		if (*name != "" && p.Name != *name) || (*backend != "" && p.Backend != *backend) {
 			return p, errors.New("requested project identity conflicts with this repository's saved environment")
 		}
+		fmt.Fprintln(a.Out, "Using this repository's saved project settings.")
 	} else {
 		key, _ := config.RepositoryKey(repo)
 		inferred := strings.TrimSuffix(filepath.Base(key), ".git")
@@ -128,11 +131,12 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 		if provider == "" && len(a.Strategies.Names()) == 1 {
 			provider = a.Strategies.Names()[0]
 		}
-		fmt.Fprintf(a.Out, "New project: %s\n", repo)
 		if !*accept {
 			if !a.Interactive || a.In == nil {
 				return p, errors.New("initial setup needs an interactive terminal; an agent can use allset init --name NAME --backend SERVICE --yes")
 			}
+			fmt.Fprintln(a.Out, "Press Enter to accept a suggested value, or Ctrl+C to cancel.")
+			fmt.Fprintln(a.Out, "For help from your coding agent, ask it to run allset config guide in this repository.")
 			reader := bufio.NewReader(io.LimitReader(a.In, 8192))
 			ask := func(label, fallback string) (string, error) {
 				fmt.Fprintf(a.Out, "%s [%s]: ", label, fallback)
@@ -146,11 +150,11 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 				}
 				return answer, nil
 			}
-			inferred, err = ask("Project name", inferred)
+			inferred, err = ask("1/2 Project name", inferred)
 			if err != nil {
 				return p, err
 			}
-			provider, err = ask("Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
+			provider, err = ask("2/2 Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
 			if err != nil {
 				return p, err
 			}

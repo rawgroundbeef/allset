@@ -49,7 +49,9 @@ It removes its own container and image afterward, leaving shared Docker caches.
 
 Box, SSH, filesystem hydration, system bootstrap and Herdr are simulated.
 Repository validation, synthetic credential restore, native MCP file writes,
-and workspace orchestration execute the packaged code. This verifies the
+and workspace orchestration execute the packaged code. An interactive bare
+invocation also creates a missing `.allset` from saved settings and reopens
+without repeating setup. This verifies the
 packaging boundary and preservation of existing work, not real cloud/auth
 readiness. The Go suite separately covers cache tampering and lifecycle faults.
 

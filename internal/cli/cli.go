@@ -35,7 +35,7 @@ type App struct {
 
 const help = `AllSet — open your remote project and choose your agent.
 
-  allset                            Open this folder's remote project
+  allset                            Set up this project if needed, then open it
   allset init                       Create .allset from this repository
   allset dashboard                    Open/resume a registered project
   allset .                         Explicit form of bare allset
@@ -70,8 +70,12 @@ No terminal setting belongs in project config. No client takeover.
 Projects/status/doctor and dry-run accept --json. Doctor exits 2 for incomplete
 checks, 1 for failures. --config PATH must precede the command.
 
+Without .allset, interactive open starts project setup and reuses saved bindings.
+An unfamiliar project asks for its name and compute provider. Read-only commands
+and dry-run never create configuration. allset init runs configuration setup only.
+
 Box is the first compute backend. Its current workspace strategy delegates setup
-and sign-ins to the installed controller; Python remains required for that adapter.
+and sign-ins to the bundled controller; Python remains required for that adapter.
 Other providers require their own strategies. No agent starts by default.
 It works in normal terminals, cmux, and Herdr Local panes. Run it on your laptop.
 `
@@ -358,9 +362,15 @@ func (a App) Run(ctx context.Context, args []string) int {
 	}
 	p, err := a.resolve(ctx, f, name)
 	initialized := false
-	if errors.Is(err, config.ErrUnregistered) && name == "." && operation == "open" && !dry && !*asJSON && a.Interactive {
-		p, err = a.initialize(ctx, f, nil)
-		initialized = err == nil
+	if (err == nil || errors.Is(err, config.ErrUnregistered)) && name == "." && operation == "open" && !dry && !*asJSON && a.Interactive {
+		location, locationErr := a.location()
+		if locationErr != nil {
+			return a.fail(locationErr)
+		}
+		if location.ManifestPath == "" {
+			p, err = a.initialize(ctx, f, nil)
+			initialized = err == nil
+		}
 	}
 	if err != nil {
 		return a.fail(err)

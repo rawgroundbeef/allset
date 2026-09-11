@@ -1,5 +1,36 @@
 # AllSet progress
 
+## Bare project setup — 2026-09-11
+
+- User requirement: running `allset` without `.allset` starts setup automatically,
+  with a guided walkthrough that can be used with the preferred coding agent.
+- Fixed the saved-registration gap: interactive current-project open now creates
+  the missing project file using existing settings, then opens the environment.
+  Unfamiliar repositories still ask for name/provider; the prompts now explain
+  shared versus private settings, defaults/cancellation, and the agent guide.
+  Existing files are preserved. Named shortcuts, scripted use of saved
+  registrations, dry-run and read-only commands do not create project files.
+- Work isolated in `fix/bare-project-setup` from main `9dcfacf`; application
+  worktrees and live environments are untouched. Reused existing initialization,
+  origin verification, account binding and atomic no-overwrite behavior.
+- **Local/mock:** full Go race suite, vet, build, diff whitespace, changed
+  documentation links and secret scan passed. CLI regressions cover saved
+  bindings, nested directories, read-only/named/scripted entry, malformed files,
+  cancellation and the guided prompts. Review was local, not independent; no
+  blocking findings in the entry-point change. Existing origin/binding checks
+  and atomic creation prevent cross-project fallback or config overwrite.
+- **Packaged local/mock:** the offline Linux arm64 Docker test passed a PTY-backed
+  first run in an unfamiliar Git repo: the walkthrough saved configuration and
+  accurately reported missing account/provider setup, with no provider call.
+  A saved-project first run created `.allset`, preserved registry/MCP settings,
+  and opened successfully; repeat-open left the file unchanged and skipped setup.
+  Existing workspace reuse and collection checks also passed. Docker resources
+  were cleaned up. No live VM or real sign-in was used for this change.
+- Remaining: the walkthrough configures project identity/provider declarations;
+  full private account/provider onboarding is still incomplete. The default is
+  terminal guidance plus `allset config guide` for any agent; launching a chosen
+  agent from setup remains a product question, not implemented behavior.
+
 ## Bundled controller — 2026-09-10
 
 - Accepted: remove the private controller-code dependency and verify a packaged

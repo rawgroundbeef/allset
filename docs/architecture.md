@@ -38,8 +38,10 @@ The nearest .allset must match origin and any saved project binding.
 Malformed documents, unsupported fields, symlinks, and identity conflicts fail;
 they never fall through into inference or first-time provisioning.
 
-Absent a manifest, existing registry inference remains available for continuity.
-An unknown repository enters init only during interactive open. Init creates a
+Absent a manifest, interactive current-project open runs init, reusing the saved
+registry binding when present. Named shortcuts and noninteractive calls keep
+registry inference for continuity. An unknown repository enters init only during
+interactive open. Init creates a
 strict file atomically, without clobbering files or copying accounts. Dry runs,
 status, doctor, config inspection, cancellation, and validation never provision
 or start the init flow. Config creation does not imply environment readiness.
