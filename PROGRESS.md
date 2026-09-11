@@ -1,5 +1,43 @@
 # AllSet progress
 
+## Individual agent sign-in — 2026-09-11
+
+- User request: repair one configured project's agent login with a short command.
+  Added `allset config claude`, `allset config codex`, and `allset config cursor`.
+  The current repo is inferred through existing origin/manifest/binding checks;
+  an explicit project or alias can follow the client name. Existing `login
+  PROJECT CLIENT` uses the same path. Inspection and dry-run stay read-only.
+- Login now uses the owned running VM, checks its restored filesystem and chosen
+  client, and enters native sign-in. It does not resume/provision compute, set
+  up tools/repositories, restore other logins, or configure Infisical/GitHub/MCPs.
+  Open a stopped or unprepared project first. Login no longer accepts `--ttl`.
+- The project lock spans native auth; the preparation spinner ends before the
+  client takes the terminal. The expected account is shown when configured.
+  Only an authenticated matching identity and usable selected-client credentials
+  can replace that cache. Failed/cancelled sign-in retains previous credential
+  material marked for retry. Attached monitors skip locked projects and pending
+  logins, including after rejection; they cannot silently accept failed auth.
+- Packaged testing caught the old wrapper interpreting the project `dashboard`
+  as a native Box command. The Go plan now passes an explicit project target so
+  the wrapper cannot re-resolve it or dispatch a provider command by accident.
+- **Local/mock:** Go race tests, vet and build passed during implementation.
+  Regression checks cover each shortcut, named/current project, missing/foreign
+  bindings, dry-run/TTY enforcement, stopped/restoring VMs, missing clients,
+  native account mismatch, cancellation/failure, credential response scope,
+  previous-cache preservation and background capture during/after sign-in.
+- **Packaged local/mock:** Linux arm64 executable passed project-local Claude
+  native sign-in/status/capture with simulated native CLI and synthetic accounts.
+  Other client caches, source credentials, MCP auth, manifest, registry and active
+  work were unchanged. Only provider `info` calls occurred. Earlier setup,
+  startup-display, workspace-reuse, collection and failure checks still passed.
+- Review is local, not independent. The auth boundary and remaining real-provider
+  verification are recorded in [sign-in acceptance](.planning/0004-setup-ux/agent-login-uat.md)
+  and [threat model](.planning/0004-setup-ux/threat-model.md).
+- **Unverified:** real browser/provider authentication, particularly Codex's
+  localhost callback and Cursor's native flow. No live VM or credential was
+  changed for this feature. Next: use the command in the normal local project
+  terminal; incomplete private account/profile onboarding remains separate.
+
 ## Setup review and startup display — 2026-09-11
 
 - Corrected the previous first-run UX: its tests proved silent config restoration

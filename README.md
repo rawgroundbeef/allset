@@ -109,7 +109,9 @@ allset status                # VM state; does not start or stop it
 allset connect               # Connect only; refuses a stopped VM
 allset mcp sync               # Apply declared MCPs on the running VM
 allset mcp login trigger      # Project-specific native Trigger sign-in
-allset login dashboard codex  # Native agent sign-in for the bound project
+allset config claude          # Repair Claude sign-in for this project
+allset config codex           # Sign in to Codex for this project
+allset config cursor          # Sign in to Cursor for this project
 allset collect               # Save the default worktree's changes locally
 allset stop                  # Save results and stop the entire project VM
 allset resume                # Resume the saved VM and open the project
@@ -118,6 +120,21 @@ allset resume                # Resume the saved VM and open the project
 Then run `codex`, `claude`, or `cursor-agent` in the remote shell and work normally.
 AllSet does not require a task prompt or choose an agent for you. Agent login,
 GitHub access, and Infisical authentication are separate identities.
+
+To repair an agent login, run `allset config claude` (or `codex` / `cursor`)
+from your local project directory. AllSet connects to its existing running Box,
+opens the native sign-in flow, verifies the account, saves that client's login,
+and returns to your prompt. Use the browser link shown by the client and the
+account selected for this project. Outside the repo, use
+`allset config claude dashboard`; `allset login dashboard claude` also works.
+
+Sign-in leaves project configuration, other client logins, Infisical, GitHub,
+MCP settings and existing agent sessions alone. A missing/stopped machine or
+missing client tells you to run `allset` first. It does not create or resume a
+VM, install tools, or accept `--ttl`. `--dry-run --json` shows dispatch without
+connecting. An interrupted, failed or wrong-account sign-in stays marked as
+needing login until a verified `allset config CLIENT` succeeds; background
+credential collection cannot silently accept that unverified login.
 
 In a Herdr Local pane, `allset` prepares the project's remote Herdr workspace and
 returns to the local prompt. Select the printed machine and workspace in Herdr's
@@ -143,7 +160,7 @@ honors the caller's `HERDR_CONFIG_PATH`; it never uses the UI's selected machine
 to choose a project or account. Herdr currently requires the sidebar click to
 select that machine in the existing window. See [Herdr machine connections](https://herdr.dev/docs/connecting-machines/).
 Stopping the VM ends its processes. The returning handoff has no attached login
-cache monitor; use `allset login PROJECT AGENT` for sign-in, and an unobserved
+cache monitor; use `allset config CLIENT [PROJECT]` for sign-in, and an unobserved
 credential refresh may require sign-in again after a later VM resume.
 
 Create/resume still defaults to a two-hour auto-stop deadline. Opening an already

@@ -42,8 +42,9 @@ class Progress:
     Callers report actual work, never estimated percentages. The worker only
     redraws text: it owns no provider operation and cannot outlive this scope.
     """
-    def __init__(self, stream=None):
+    def __init__(self, stream=None, *, summary='Workspace prepared'):
         self.stream = stream if stream is not None else sys.stdout
+        self.summary = clean(summary)
         self.animated = self.stream.isatty() and os.environ.get('TERM') != 'dumb'
         self.color = self.animated and 'NO_COLOR' not in os.environ
         self.lock = threading.Lock()
@@ -137,7 +138,7 @@ class Progress:
             if kind is None:
                 if self.key and self.animated:
                     self.write(self.row('✓', self.title, '32') + '\n')
-                self.write(self.row('✓', 'Workspace prepared · ' + elapsed(time.monotonic() - self.started), '32') + '\n')
+                self.write(self.row('✓', self.summary + ' · ' + elapsed(time.monotonic() - self.started), '32') + '\n')
             else:
                 title = 'Stopped waiting' if issubclass(kind, KeyboardInterrupt) else 'Could not finish'
                 self.write(self.row('!', title + (': ' + self.title if self.title else ''), '33') + '\n')

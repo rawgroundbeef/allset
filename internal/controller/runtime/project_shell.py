@@ -2,6 +2,7 @@
 """Project shortcuts over the native Box CLI, with a plain remote Herdr terminal."""
 
 import argparse
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -106,14 +107,50 @@ def prepare_repository(meta, profile, *, create_terminal=True):
         progress.note('Branch: ' + (branch or '(detached HEAD)'))
 
 
+def login_project(profile, provider):
+    """Repair one login on the owned running VM, without preparing other accounts."""
+    if provider not in agent_auth.REMOTE_FILES:
+        raise ValueError('Unsupported agent credential provider')
+    if not agent_auth.config(c, profile):
+        raise ValueError('This project has no agent account binding; use allset config guide to configure it')
+    name = profile['name']
+    # Hold the project operation lock through native sign-in, but release the
+    # display before the interactive client owns the terminal.
+    with contextlib.ExitStack() as stack:
+        with progress.Progress(summary='Ready for ' + provider.title() + ' sign-in'):
+            progress.stage('connection', 'Connecting to ' + name, 'Waiting for project access')
+            stack.enter_context(projects.project_lock(name))
+            try:
+                meta = projects.machine(name)
+                pointer = json.loads((projects.PROJECTS / name / 'machine.json').read_text())
+            except FileNotFoundError:
+                raise ValueError('No saved project machine; run allset ' + name + ' first') from None
+            if (meta.get('project') != name or meta.get('role') != 'project'
+                    or meta.get('task_id') != pointer.get('task_id')
+                    or meta.get('machine_id') != pointer.get('machine_id')):
+                raise ValueError('Saved machine ownership mismatch; no sign-in started')
+            info = c.box('info', meta['machine_id'])['box']
+            if info.get('id') != meta['machine_id']:
+                raise ValueError('Box returned a different machine; no sign-in started')
+            if info['state'] not in ('ready', 'idle', 'running'):
+                raise ValueError('Project is not running; run allset ' + name + ' first, then retry sign-in')
+            c.refresh_ssh(meta)
+            projects.wait_project_filesystem(meta, timeout=0)
+            binary = {'claude': 'claude', 'codex': 'codex', 'cursor': 'cursor-agent'}[provider]
+            progress.stage('client', 'Checking ' + provider.title())
+            if c.remote(meta, 'command -v ' + shlex.quote(binary) + ' >/dev/null && echo ready || true').strip() != 'ready':
+                raise ValueError(provider.title() + ' is not installed on this Box; run allset ' + name + ' to prepare its tools')
+        return agent_auth.login(c, meta, profile, provider)
+
+
 def shell(name, ttl=7200, *, login_provider=None):
     """Attach to a persistent remote PTY without nesting the Herdr interface or starting an agent."""
     profile = projects.project(name)
+    if login_provider:
+        return login_project(profile, login_provider)
     if profile.get('agent_profile'):
         print('Agent account profile: ' + profile['agent_profile'], flush=True)
-    meta = projects.open_project(name, ttl=ttl, create_terminal=False, prepare_sessions=not bool(login_provider))
-    if login_provider:
-        return agent_auth.login(c, meta, profile, login_provider)
+    meta = projects.open_project(name, ttl=ttl, create_terminal=False)
     prepare_repository(meta, profile)
     agent_auth.print_accounts(c, profile)
     pane = terminal(meta, profile)
@@ -128,7 +165,14 @@ def shell(name, ttl=7200, *, login_provider=None):
 def main(argv=None):
     """Keep every native Box command available; only registered project names become shortcuts."""
     args = list(sys.argv[1:] if argv is None else argv)
-    name = None if args and (args[0] in NATIVE_COMMANDS or args[0].startswith('-')) else resolve_project(args[0] if args else None)
+    if args and args[0] == '--project':
+        if len(args) < 2:
+            raise ValueError('An explicit project name is required')
+        # Go already resolved this project. A name such as "dashboard" must
+        # never be reinterpreted as a native Box command by the old wrapper.
+        name, args = args[1], args[1:]
+    else:
+        name = None if args and (args[0] in NATIVE_COMMANDS or args[0].startswith('-')) else resolve_project(args[0] if args else None)
     if name is None:
         if args and args[0] == '.':
             raise ValueError('This repository has no project profile yet; register it once with box-herdr project-add.')
@@ -146,6 +190,9 @@ def main(argv=None):
 if __name__ == '__main__':
     try:
         sys.exit(main())
-    except (Exception, KeyboardInterrupt) as error:
-        print('box:', str(error), file=sys.stderr)
+    except KeyboardInterrupt:
+        print('allset: sign-in or connection interrupted; no VM stop requested', file=sys.stderr)
+        sys.exit(130)
+    except Exception as error:
+        print('allset:', str(error), file=sys.stderr)
         sys.exit(1)

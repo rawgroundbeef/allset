@@ -6,6 +6,9 @@ import os
 import pty
 import select
 import time
+import tempfile
+import types
+import fcntl
 import progress
 from pathlib import Path
 import subprocess
@@ -14,6 +17,7 @@ import unittest
 from unittest.mock import patch
 
 import projects
+import project_shell
 import agent_auth
 import github_auth
 import infisical_context
@@ -23,6 +27,25 @@ c = projects.c
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_explicit_project_is_not_reinterpreted_as_native_box_command(self):
+        with patch.object(project_shell, 'resolve_project', side_effect=AssertionError('project re-resolved')), \
+             patch.object(project_shell, 'shell', return_value=0) as shell:
+            self.assertEqual(project_shell.main(['--project', 'dashboard', '--login', 'claude']), 0)
+            shell.assert_called_once_with('dashboard', ttl=7200, login_provider='claude')
+
+    def test_attached_monitor_skips_capture_while_native_login_owns_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            controller = types.SimpleNamespace(STATE=Path(tmp))
+            project = Path(tmp) / 'projects/dashboard'
+            project.mkdir(parents=True)
+            with (project / 'operation.lock').open('a') as lock, patch.object(agent_auth, 'capture') as capture:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                agent_auth.capture_when_idle(controller, {}, {'name': 'dashboard'})
+                capture.assert_not_called()
+                fcntl.flock(lock, fcntl.LOCK_UN)
+                agent_auth.capture_when_idle(controller, {}, {'name': 'dashboard'})
+                capture.assert_called_once()
+
     def test_progress_plain_output_and_failure_cleanup(self):
         for error in (None, RuntimeError('fixture failure'), KeyboardInterrupt()):
             output = io.StringIO()
@@ -82,6 +105,92 @@ class RuntimeTests(unittest.TestCase):
             finally:
                 os.close(master)
                 if slave is not None: os.close(slave)
+
+    def test_single_client_login_never_prepares_or_resumes_the_environment(self):
+        profile = {'name': 'dashboard', 'agent_profile': 'work'}
+        owner = {'project': 'dashboard', 'role': 'project', 'task_id': 'project-dashboard',
+                 'machine_id': 'bx_saved', 'ssh_alias': 'box-saved'}
+        for fault in ('none', 'stopped', 'foreign', 'wrong-id', 'restoring', 'missing-client', 'no-binding'):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / 'dashboard').mkdir()
+                (root / 'dashboard/machine.json').write_text(json.dumps(owner))
+                target = dict(owner, project='foreign') if fault == 'foreign' else owner
+                def native_login(controller, meta, selected_profile, provider):
+                    self.assertFalse(progress.active(), 'spinner survived into native sign-in')
+                    self.assertEqual((meta, selected_profile, provider), (owner, profile, 'claude'))
+                    return 7
+                with patch.object(projects, 'PROJECTS', root), \
+                     patch.object(projects, 'project', return_value=profile), \
+                     patch.object(projects, 'machine', return_value=target), \
+                     patch.object(projects, 'open_project', side_effect=AssertionError('sign-in prepared other accounts or resumed compute')), \
+                     patch.object(agent_auth, 'config', return_value=None if fault == 'no-binding' else {'name': 'work'}), \
+                     patch.object(c, 'box', return_value={'box': {'id': 'bx_other' if fault == 'wrong-id' else 'bx_saved',
+                                                                'state': 'stopped' if fault == 'stopped' else 'running'}}) as box, \
+                     patch.object(c, 'refresh_ssh') as ssh, \
+                     patch.object(projects, 'wait_project_filesystem', side_effect=RuntimeError('restoring') if fault == 'restoring' else None) as filesystem, \
+                     patch.object(c, 'remote', return_value='' if fault == 'missing-client' else 'ready') as remote, \
+                     patch.object(agent_auth, 'login', side_effect=native_login) as login:
+                    if fault == 'none':
+                        self.assertEqual(project_shell.shell('dashboard', login_provider='claude'), 7)
+                        filesystem.assert_called_once_with(owner, timeout=0)
+                        self.assertIn('command -v claude', remote.call_args.args[1])
+                    else:
+                        with self.assertRaises((ValueError, RuntimeError)):
+                            project_shell.shell('dashboard', login_provider='claude')
+                        login.assert_not_called()
+                    if fault in ('no-binding', 'foreign'):
+                        box.assert_not_called()
+                    else:
+                        box.assert_called_once_with('info', 'bx_saved')
+                    if fault in ('no-binding', 'foreign', 'stopped', 'wrong-id'):
+                        ssh.assert_not_called()
+
+    def test_native_sign_in_verifies_identity_and_caches_only_selected_client(self):
+        for outcome in ('success', 'failed', 'wrong-account', 'unverified', 'missing-credentials', 'extra-client'):
+            with self.subTest(outcome=outcome), tempfile.TemporaryDirectory() as tmp:
+                controller = types.SimpleNamespace(STATE=Path(tmp))
+                profile = {'name': 'dashboard', 'agent_profile': 'work'}
+                owner = {'project': 'dashboard', 'ssh_alias': 'box-dashboard'}
+                binding = {'name': 'work', 'providers': {'claude': {'account_email': 'work@example.test'}}}
+                other = agent_auth.cache_path(controller, profile, 'codex')
+                agent_auth.private_write(other, {'fixture': 'other login unchanged'})
+                before = other.read_bytes()
+                credential = {'claudeAiOauth': {'accessToken': 'synthetic-access'}}
+                selected = agent_auth.cache_path(controller, profile, 'claude')
+                old_credential = {'claudeAiOauth': {'accessToken': 'old-synthetic-access'}}
+                agent_auth.private_write(selected, {'project': 'dashboard', 'profile': 'work',
+                                                     'provider': 'claude', 'contents': old_credential})
+                identity = {'logged_in': outcome != 'unverified',
+                            'email': 'personal@example.test' if outcome == 'wrong-account' else 'work@example.test'}
+                response = {} if outcome == 'missing-credentials' else {'claude': credential}
+                if outcome == 'extra-client': response['codex'] = {'tokens': {'access_token': 'unexpected'}}
+                with patch.object(agent_auth, 'config', return_value=binding), \
+                     patch.object(agent_auth.subprocess, 'call', return_value=9 if outcome == 'failed' else 0) as native, \
+                     patch.object(agent_auth, 'native_identity', return_value=identity) as verify, \
+                     patch.object(agent_auth, 'exchange', return_value=response) as exchange:
+                    if outcome in ('wrong-account', 'unverified', 'missing-credentials', 'extra-client'):
+                        with self.assertRaises(RuntimeError):
+                            agent_auth.login(controller, owner, profile, 'claude')
+                    else:
+                        self.assertEqual(agent_auth.login(controller, owner, profile, 'claude'), 9 if outcome == 'failed' else 0)
+                    self.assertIn('claude auth login --claudeai --email work@example.test', native.call_args.args[0][-1])
+                    if outcome == 'success':
+                        request = exchange.call_args.args[2]
+                        self.assertEqual(set(request['files']), {'claude'})
+                        saved = agent_auth.read_private(selected)
+                        self.assertEqual(saved['contents'], credential)
+                        self.assertEqual(saved['project'], 'dashboard')
+                    else:
+                        expected_reads = 1 if outcome in ('missing-credentials', 'extra-client') else 0
+                        self.assertEqual(exchange.call_count, expected_reads)
+                        pending = agent_auth.read_private(selected)
+                        self.assertTrue(pending['needs_login'])
+                        self.assertEqual(pending['contents'], old_credential)
+                        agent_auth.capture(controller, owner, profile, ['claude'])
+                        self.assertEqual(exchange.call_count, expected_reads)  # No later monitor accepts the rejected login.
+                    if outcome == 'failed': verify.assert_not_called()
+                    self.assertEqual(other.read_bytes(), before)
 
     def test_forwarded_ssh_endpoint_and_invalid_endpoint(self):
         self.assertEqual(c.ssh_destination({'sshEndpoint': '127.0.0.1:2200'}), ('127.0.0.1', 2200))

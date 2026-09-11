@@ -194,16 +194,19 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 		script := mcpBridge + "\ntry:\n sys.exit(mcp_main())\nexcept Exception as error:\n print('allset:', str(error), file=sys.stderr)\n sys.exit(1)\n"
 		plan.Args = []string{"-c", script, runtimeRoot, string(payload), mcps.Runtime, operation, agent}
 	case "open", "resume", "login":
-		if ttl < 1 || ttl > 7200 {
-			return plan, errors.New("this migration retains the existing 1–7200 second trial limit")
-		}
 		if operation == "login" {
 			if agent != "claude" && agent != "codex" && agent != "cursor" {
 				return plan, errors.New("agent must be claude, codex, or cursor")
 			}
-			plan.Args = []string{filepath.Join(runtimeRoot, "project_shell.py"), p.Name, "--ttl", fmt.Sprint(ttl), "--login", agent}
+			if _, err := b.Machine(p); err != nil {
+				return plan, fmt.Errorf("agent sign-in requires a valid saved machine; open the project first: %w", err)
+			}
+			plan.Args = []string{filepath.Join(runtimeRoot, "project_shell.py"), "--project", p.Name, "--login", agent}
 			plan.Interactive = true
 		} else {
+			if ttl < 1 || ttl > 7200 {
+				return plan, errors.New("this migration retains the existing 1–7200 second trial limit")
+			}
 			if !terminal.Valid(attach) && attach != "terminal" {
 				return plan, errors.New("attachment must be workspace, herdr, ssh, none, or terminal")
 			}

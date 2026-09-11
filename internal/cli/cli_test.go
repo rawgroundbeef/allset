@@ -81,6 +81,7 @@ func TestAliasAndRepoInferenceDispatchWithoutPrompt(t *testing.T) {
 
 func TestDryRunNeverExecutesAndJSONIsUsable(t *testing.T) {
 	a, out, plans := appFixture(t)
+	seedLoginMachine(t, a)
 	if code := a.Run(context.Background(), []string{"login", "joy", "codex", "--dry-run", "--json"}); code != 0 {
 		t.Fatal(code, out.String())
 	}

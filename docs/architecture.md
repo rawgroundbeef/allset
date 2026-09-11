@@ -77,8 +77,10 @@ prerequisites. Remote tool bootstrap currently targets Linux x86_64 Box images.
 
 The repository file currently declares project bindings, not complete workspace
 requirements. Box preparation uses the bundled compatibility controller.
-The controller accepts an explicit session-preparation flag: normal SSH,
-prepare-only, and agent login use tooling and repository setup without Herdr.
+The controller accepts an explicit session-preparation flag: normal SSH
+and prepare-only use tooling and repository setup without Herdr. Agent login
+checks the owned running machine, restored filesystem and selected client, then
+runs native sign-in without project/tool/account preparation.
 Herdr transports, including auto from a Herdr pane, install its tooling/hooks,
 register the machine, and prepare a workspace. The binary and controller now
 upgrade together; there is no separate controller-code installation step.
@@ -145,3 +147,20 @@ restore and native MCP file projection. It does not prove cloud provisioning,
 real sign-ins, tool installation or filesystem restoration. Full new-project
 provisioning, three apps/previews, and parallel agent worktree isolation remain
 outstanding. See PROGRESS.md for current evidence.
+
+## Individual agent sign-in
+
+`allset config claude|codex|cursor [PROJECT]` resolves the current repository or
+explicit project and dispatches the same login operation as `allset login
+PROJECT CLIENT`. Config review, display and validation keep their existing
+semantics. Only these explicit client commands enter interactive sign-in.
+
+The Box strategy requires a valid saved owner; runtime rechecks ownership and
+live state before SSH and filesystem readiness. Login cannot create/resume a
+machine or apply unrelated accounts/services. It holds the project operation
+lock through native auth, with the progress display released before the client
+owns stdin. The native result and expected account determine whether the selected
+credential is cached. A pending/rejected login remains marked `needs_login`;
+automatic credential collection skips it until verified explicit sign-in.
+Attached monitors also skip capture while another project operation holds the
+lock. No shared source credential or other client's cache is rewritten by login.

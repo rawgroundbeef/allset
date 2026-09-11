@@ -28,7 +28,21 @@ def emit(value):
     print(json.dumps(value))
 
 
-if tool == 'box':
+if tool == 'claude':
+    record(' '.join(args[:2]))
+    if args[:2] == ['auth', 'login']:
+        assert args == ['auth', 'login', '--claudeai', '--email', 'fixture@example.test']
+        path = home / '.claude/.credentials.json'
+        value = json.loads(path.read_text()) if path.exists() else {}
+        value['claudeAiOauth'] = {'accessToken': 'synthetic-access', 'refreshToken': 'synthetic-refresh'}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(value))
+        path.chmod(0o600)
+        print('Synthetic native sign-in completed')
+    else:
+        assert args == ['auth', 'status']
+        emit({'loggedIn': True, 'email': 'fixture@example.test', 'orgId': 'fixture-org'})
+elif tool == 'box':
     args = [a for a in args if a not in ('--json', '--no-update')]
     record(args[0])
     assert args == ['info', 'bx_saved'], 'Unexpected provider operation'

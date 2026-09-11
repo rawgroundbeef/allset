@@ -56,10 +56,14 @@ const help = `AllSet — open your remote project and choose your agent.
   allset config show [PROJECT]      Inspect registration or project account bindings
   allset config schema             Print the supported registry JSON Schema
   allset config guide              Print the agent-assisted configuration guide
+  allset config claude [PROJECT]    Sign in to Claude on this project's running Box
+  allset config codex [PROJECT]     Sign in to Codex on this project's running Box
+  allset config cursor [PROJECT]    Sign in to Cursor on this project's running Box
   allset config path                Print the registry location
 
 Use --dry-run on open/resume/connect/login/collect/stop to inspect dispatch.
-Open/resume/login accept --ttl SECONDS (default 7200; existing trial cap retained).
+Open/resume accept --ttl SECONDS (default 7200; existing trial cap retained).
+Agent sign-in uses the existing running VM; open the project first if it is stopped.
 Open/resume/connect accept --attach auto|workspace|herdr|ssh|none|terminal (default auto).
 Auto in a Herdr pane prepares a remote workspace, then returns for a sidebar click.
 Elsewhere, auto opens an ordinary SSH shell without installing a session manager.
@@ -213,7 +217,7 @@ func (a App) configCommand(ctx context.Context, args []string) int {
 		fmt.Fprintf(a.Out, "Valid registry: %d project bindings. Runtime readiness has not been checked.\n", len(f.Projects))
 		return 0
 	}
-	return a.fail(errors.New("use config show [PROJECT], config schema, config guide, config path, config validate, or config import SOURCE"))
+	return a.fail(errors.New("use config claude|codex|cursor [PROJECT], config show [PROJECT], config schema, config guide, config path, config validate, or config import SOURCE"))
 }
 
 func (a App) projects(f config.File, args []string) int {
@@ -278,6 +282,18 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if len(args) > 0 && args[0] == "init" {
 		return a.initCommand(ctx, args[1:])
 	}
+	// Project-local sign-in shortcuts use the same resolution, dry-run and
+	// interactive dispatch as explicit login. They never enter project setup.
+	if len(args) > 1 && args[0] == "config" {
+		switch args[1] {
+		case "claude", "codex", "cursor":
+			agent, name, rest := args[1], ".", args[2:]
+			if len(rest) > 0 && !strings.HasPrefix(rest[0], "-") {
+				name, rest = rest[0], rest[1:]
+			}
+			args = append([]string{"login", name, agent}, rest...)
+		}
+	}
 	if len(args) > 0 && args[0] == "config" {
 		return a.configCommand(ctx, args[1:])
 	}
@@ -324,7 +340,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 	}
 	agent := ""
 	if operation == "login" {
-		if name == "." || len(args) == 0 {
+		if len(args) == 0 {
 			return a.fail(errors.New("use allset login PROJECT claude|codex|cursor"))
 		}
 		agent = args[0]
@@ -342,7 +358,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 	} else {
 		flags.BoolVar(&dry, "dry-run", false, "Show dispatch without running it")
 	}
-	if operation == "open" || operation == "resume" || operation == "login" {
+	if operation == "open" || operation == "resume" {
 		flags.IntVar(&ttl, "ttl", 7200, "Auto-stop seconds")
 	}
 	if operation == "open" || operation == "resume" || operation == "connect" {

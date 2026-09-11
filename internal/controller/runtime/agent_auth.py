@@ -1,6 +1,7 @@
 """Restore and save explicitly bound project agent logins over private SSH streams."""
 
 import contextlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -147,8 +148,21 @@ def capture(controller, meta, profile, providers=None, *, authenticated=False):
     selected = set(REMOTE_FILES) if providers is None else set(providers)
     if selected - REMOTE_FILES.keys():
         raise ValueError('Unsupported agent credential provider')
+    if not authenticated:
+        # Only a verified explicit sign-in clears a rejected/pending login.
+        # Attached monitors must not cache a cancelled or wrong-account login.
+        for provider in list(selected):
+            path = cache_path(controller, profile, provider)
+            if path.exists() and read_private(path).get('needs_login'):
+                selected.remove(provider)
+    if not selected:
+        return
     contents = exchange(controller, meta, {'action': 'read',
         'files': {name: {'path': REMOTE_FILES[name]} for name in selected}})
+    if set(contents) - selected:
+        raise RuntimeError('Credential response included an unselected client; caches were left unchanged')
+    if authenticated and any(not has_login(provider, contents.get(provider)) for provider in selected):
+        raise RuntimeError('Sign-in ended without a usable provider credential; previous credentials were retained for retry')
     for provider, value in contents.items():
         path = cache_path(controller, profile, provider)
         previous = read_private(path) if path.exists() else {}
@@ -194,7 +208,20 @@ def login(controller, meta, profile, provider):
         raise ValueError('This project has no agent account profile configured')
     if meta.get('project') != profile['name']:
         raise ValueError('Refusing to sign in on a different project Box')
+    if provider not in REMOTE_FILES:
+        raise ValueError('Unsupported agent credential provider')
+    path = cache_path(controller, profile, provider)
+    pending = read_private(path) if path.exists() else {
+        'project': profile['name'], 'profile': binding['name'], 'provider': provider}
+    if (pending.get('project'), pending.get('profile'), pending.get('provider')) != (
+            profile['name'], binding['name'], provider):
+        raise ValueError('Agent credential cache belongs to a different project or profile')
+    pending['needs_login'] = True
+    private_write(path, pending)
     print('Sign in to ' + provider + ' for ' + profile['name'] + ' (' + binding['name'] + ').', flush=True)
+    expected = binding.get('providers', {}).get(provider, {}).get('account_email')
+    if expected:
+        print('Use this account: ' + expected, flush=True)
     print('Open the link in your local browser. Use the account for this project.', flush=True)
     args = ['ssh', '-tt']
     if provider == 'codex':
@@ -204,7 +231,6 @@ def login(controller, meta, profile, provider):
     result = subprocess.call(args)
     if result == 0:
         identity = native_identity(controller, meta, provider)
-        expected = binding.get('providers', {}).get(provider, {}).get('account_email')
         if not identity.get('logged_in') or not identity.get('email'):
             raise RuntimeError('Could not verify the signed-in account; login was not cached.')
         if expected and identity['email'].casefold() != expected.casefold():
@@ -214,6 +240,7 @@ def login(controller, meta, profile, provider):
         path = cache_path(controller, profile, provider)
         saved = read_private(path) if path.exists() else {}
         if not has_login(provider, saved.get('contents')):
+            require_login(controller, profile, provider)
             raise RuntimeError('Sign-in ended without a saved provider credential; inspect the native login result.')
         print(provider + ' login saved for ' + profile['name'] + ' as ' + identity['email'] + '.', flush=True)
     return result
@@ -246,6 +273,16 @@ print(json.dumps(identity))
     return json.loads(controller.remote(meta, shlex.join(['python3', '-c', script, provider]), timeout=35))
 
 
+def capture_when_idle(controller, meta, profile):
+    """Do not collect partially changed logins during an explicit sign-in or setup."""
+    with (controller.STATE / 'projects' / profile['name'] / 'operation.lock').open('a') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        capture(controller, meta, profile)
+
+
 @contextlib.contextmanager
 def monitor(controller, meta, profile):
     """Save refreshed logins while attached and on detach; offline auto-stop still may need sign-in."""
@@ -254,7 +291,7 @@ def monitor(controller, meta, profile):
     def poll():
         """Keep network errors out of the terminal and leave the last good private cache intact."""
         while not stopped.wait(15):
-            try: capture(controller, meta, profile)
+            try: capture_when_idle(controller, meta, profile)
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError): pass
 
     thread = threading.Thread(target=poll, daemon=True)
@@ -263,6 +300,6 @@ def monitor(controller, meta, profile):
         yield
     finally:
         stopped.set(); thread.join(timeout=35)
-        try: capture(controller, meta, profile)
+        try: capture_when_idle(controller, meta, profile)
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
             print('Agent login cache could not be updated; a later resume may require sign-in.', file=sys.stderr)

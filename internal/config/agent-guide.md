@@ -80,6 +80,14 @@ Append PROJECT when outside its repository. Normal open/connect also applies
 configured MCPs. No agent is restarted. Native config conflicts fail rather than
 replacing unrelated settings. Use a new session or native reload to pick up tools.
 
+For individual agent authentication, use `allset config claude`, `allset config
+codex`, or `allset config cursor` from the local project; an explicit project can
+follow the client name. This invokes native sign-in on the owned running VM,
+verifies the selected account and caches only that client. It does not edit the
+manifest, resume compute, install tools or configure other integrations. Open a
+stopped/unprepared project with `allset` first. Failed/interrupted sign-in remains
+marked for retry with the same command; it is not a successfully saved login.
+
 The project manifest is authoritative when present; named shortcuts use the
 registry. Keep both current if using both entry forms. Omitted mcps leaves native
 settings alone; an explicit empty object removes AllSet-owned entries. Each VM

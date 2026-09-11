@@ -99,3 +99,19 @@ project's current login. Defining these fields alone would not implement them.
 ## MCP declarations
 
 `mcps` is supported in project files and registry entries. See [native MCP setup](mcps.md) for Trigger.dev, custom servers, credential references, and lifecycle behavior.
+
+## Repair an individual agent login
+
+Run `allset config claude`, `allset config codex`, or `allset config cursor` in
+the local project directory. These are explicit native sign-in commands, not
+shared configuration edits. They use the selected project's existing running
+Box and private account binding. An explicit project or alias can follow the
+client: `allset config claude dashboard`.
+
+Follow the native browser flow with the project's intended account. A successful
+native result is verified before AllSet saves that client's credentials. Failed,
+cancelled or mismatched sign-ins remain marked for retry, and background capture
+cannot accept them. Use the same command to retry. VM preparation and missing
+account bindings remain separate: open with `allset` first, or use
+`allset config guide` for incomplete private setup. Sign-in does not resume a
+stopped VM and does not accept a TTL. Dry-run remains read-only.

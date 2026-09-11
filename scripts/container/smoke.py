@@ -78,7 +78,7 @@ def cli_tty(*args):
 
 
 for target in (home / '.ascii/bin/box', home / 'test-tools/ssh', home / 'test-tools/scp',
-               state / 'bin/herdr', home / '.local/bin/herdr'):
+               state / 'bin/herdr', home / '.local/bin/herdr', home / 'test-tools/claude'):
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile('/opt/checks/transport.py', target)
     target.chmod(0o700)
@@ -105,7 +105,8 @@ write(home / 'box-state', 'ready')
 source = home / 'fixtures/codex.json'
 write(source, {'tokens': {'access_token': 'synthetic-access', 'refresh_token': 'synthetic-refresh'}})
 write(state / 'agent-profiles/fixture-account/profile.json', {
-    'name': 'fixture-account', 'providers': {'codex': {'credential_ref': str(source)}}})
+    'name': 'fixture-account', 'providers': {'codex': {'credential_ref': str(source)},
+                                          'claude': {'account_email': 'fixture@example.test'}}})
 write(home / '.codex/config.toml', 'model = "fixture-model"\n')
 checkout.mkdir(parents=True)
 subprocess.run(['git', 'init', '--quiet', '--initial-branch=fixture-work', str(checkout)], check=True)
@@ -177,6 +178,25 @@ assert 'changed_files' not in tty_output
 assert tty_output.rstrip().endswith('Connect: allset connect dashboard')
 print('PASS: packaged startup animates in a terminal and stops before its final handoff', flush=True)
 
+before = len(calls())
+before_codex = (home / '.codex/auth.json').read_bytes()
+before_cache = (state / 'credentials/dashboard/agents/codex.json').read_bytes()
+before_source = source.read_bytes()
+write(home / '.claude/.credentials.json', {'mcpOAuth': {'fixture': 'preserve-mcp-login'}})
+cli('config', 'claude', cwd=checkout, terminal=True, contains='claude login saved for dashboard as fixture@example.test')
+assert (home / '.codex/auth.json').read_bytes() == before_codex
+assert (state / 'credentials/dashboard/agents/codex.json').read_bytes() == before_cache
+assert source.read_bytes() == before_source
+assert (checkout / '.allset').read_bytes() == before_manifest
+assert (home / '.config/allset/config.json').read_bytes() == before_registry
+selected = json.loads((state / 'credentials/dashboard/agents/claude.json').read_text())
+assert set(selected['contents']) == {'claudeAiOauth'}
+assert json.loads((home / '.claude/.credentials.json').read_text())['mcpOAuth'] == {'fixture': 'preserve-mcp-login'}
+assert not any(c['tool'] == 'herdr' or c['operation'] == 'bootstrap' for c in calls()[before:])
+assert [c['operation'] for c in calls()[before:] if c['tool'] == 'box'] == ['info', 'info']
+assert [c['operation'] for c in calls()[before:] if c['tool'] == 'claude'] == ['auth login', 'auth status']
+print('PASS: project-local Claude sign-in verifies and caches only Claude; other logins, MCP auth and project files survive', flush=True)
+
 # Poison the old path after the first run: it must never become an import source.
 write(state / 'controller/projects.py', "raise RuntimeError('PRIVATE CONTROLLER EXECUTED')\n")
 cli('connect', 'dashboard', '--attach', 'workspace', contains='Herdr workspace ready: dashboard.')
@@ -202,6 +222,8 @@ print('PASS: bundled collection recovers tracked/untracked work without changing
 
 write(home / 'box-state', 'stopped')
 before = len(calls())
+cli('config', 'claude', cwd=checkout, terminal=True, ok=False, contains='not running')
+assert all(c['tool'] == 'box' and c['operation'] == 'info' for c in calls()[before:])
 cli('connect', 'dashboard', '--attach', 'workspace', ok=False, contains='not running')
 assert all(c['tool'] == 'box' and c['operation'] == 'info' for c in calls()[before:])
 write(home / 'box-state', 'ready')
