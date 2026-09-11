@@ -393,13 +393,16 @@ class RuntimeTests(unittest.TestCase):
             environment = []
             output = io.StringIO()
             with patch.object(onboarding, '_public_repository', return_value=True), \
-                    patch('builtins.input', side_effect=['personal-org', 'yes']), \
+                    patch('builtins.input', side_effect=['yes']), \
                     contextlib.redirect_stdout(output):
                 profile, clients = onboarding.ensure_profile(controller, request)
             self.assertEqual(clients, ['codex'])
             self.assertIn('Next: prepare Box, then open browser sign-in for Codex.', output.getvalue())
             self.assertNotIn('Personal skill', output.getvalue())
             self.assertNotIn('GitHub account', output.getvalue())
+            self.assertNotIn('Box billing [', output.getvalue())
+            self.assertIn('  Billing  personal', output.getvalue())
+            self.assertIn('  Machine  small · up to 2 hours', output.getvalue())
             self.assertTrue(profile['provider_binding']['safe_for_third_parties'])
             self.assertEqual(sum(call[:2] == ('env', 'new') for call in calls), 1)
             saved_journal = json.loads((root / 'projects/dashboard/onboarding.json').read_text())

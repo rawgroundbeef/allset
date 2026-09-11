@@ -23,8 +23,9 @@
   reconfirmed, and cancellation before validated private choices leaves no partial
   `.allset`; agent guidance remains an explicit `allset config guide` command.
   Later feedback removed the empty personal-skills question, detects public GitHub
-  repositories without ambient credentials, defaults Box billing visibly to
-  `personal`, and states that selected-client sign-in follows Box preparation.
+  repositories without ambient credentials, uses and previews personal Box
+  billing without asking for it, and states that selected-client sign-in follows
+  Box preparation.
 - Shared `.allset` contracts now support strict repository-relative skills,
   session environment references, and explicit native HTTP MCP OAuth. Private
   profiles retain provider/client/GitHub/Infisical choices. The onboarding journal
@@ -52,7 +53,7 @@
   Cursor.` followed by `Box billing [personal]:`; cancellation again made no
   provider call.
 - **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built in
-  `/private/tmp/allset-guided-release-20260911-15`. The Linux
+  `/private/tmp/allset-guided-release-20260911-16`. The Linux
   amd64 archive passed the network-disabled container proof: continuous setup and
   cancellation guards, bundled runtime, synthetic login restore, native MCP
   projection, terminal display, workspace reuse, work collection, and ownership

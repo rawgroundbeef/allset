@@ -215,7 +215,7 @@ def ensure_profile(controller, request):
                          'environment': environment_name, 'principal_id': principal,
                          'credential_ref': credential_ref}
 
-    scope = journal.get('billing_scope') if journal else input('Box billing [personal]: ').strip() or 'personal'
+    scope = journal.get('billing_scope') if journal else 'personal'
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}', scope or ''):
         raise ValueError('Box billing scope requires an explicit organization ID or name')
     scope_args = _scope_args(scope)
@@ -235,8 +235,10 @@ def ensure_profile(controller, request):
     account_identity = _account_identity(status)
     if journal and journal.get('account_identity') != account_identity:
         raise ValueError('Active Box account does not match the interrupted onboarding journal')
-    print('Box identity: ' + (account_identity.get('email') or account_identity['id']), flush=True)
-    print('Machine: small (half rate); auto-stop: at most 7200 seconds.', flush=True)
+    print('Box', flush=True)
+    print('  Account  ' + (account_identity.get('email') or account_identity['id']), flush=True)
+    print('  Billing  ' + scope, flush=True)
+    print('  Machine  small · up to 2 hours', flush=True)
     environment = journal['environment'] if journal else 'allset-' + name + '-' + uuid.uuid4().hex[:10]
     agent_name = name + '-agents'
     agent_path = controller.STATE / 'agent-profiles' / agent_name / 'profile.json'
@@ -257,7 +259,7 @@ def ensure_profile(controller, request):
     validate(profile)
     if infisical is not None:
         credential(profile)
-    if not journal and input('Create this private project environment? [y/N]: ').strip().lower() not in ('y', 'yes'):
+    if not journal and input('Create the project environment? [y/N]: ').strip().lower() not in ('y', 'yes'):
         raise ValueError('onboarding cancelled before provider mutation')
 
     if not journal:

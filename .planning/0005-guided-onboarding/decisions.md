@@ -92,6 +92,8 @@ follow-up rather than a required first-run prompt. Probe GitHub public access wi
 credentials and ask for a named GitHub account only when public access cannot be
 verified. Before Box setup, state that coding-client sign-in follows environment
 preparation so the next prompt does not look like a missing authentication step.
+Use the personal Box billing scope by default, show it with the account and
+machine terms, and ask only for the environment-creation mutation.
 
 ## Superseded planning
 
