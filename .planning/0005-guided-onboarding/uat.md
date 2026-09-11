@@ -119,8 +119,8 @@ entry reuses that setup automatically.**
 | Cold and warm latency measurements | Unverified |
 | Human alignment on this walkthrough | Approved by the user, 2026-09-11 |
 
-The implementation worktree is based on planning commit `79f0f87`; its final
-revision and gate results are recorded in `PROGRESS.md`. No VM, provider account,
+Implementation commit `5d332d6` is based on planning commit `79f0f87`; its gate
+results are recorded in `PROGRESS.md`. No VM, provider account,
 browser session, or real credential was mutated during these checks. The demo
 pass criterion remains unproven until the authorized real first-turn and warm-
 return checks execute. Do not present mocks as real auth.

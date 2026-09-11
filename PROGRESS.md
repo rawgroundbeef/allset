@@ -4,8 +4,9 @@
 
 - Implemented the approved slice from planning commit `79f0f87` in the fresh
   worktree `/private/tmp/allset-guided-onboarding-impl-20260911` on
-  `feat/guided-onboarding-implementation`. The occupied planning worktree and
-  `feat/guided-onboarding` branch were preserved unchanged.
+  `feat/guided-onboarding-implementation` as implementation commit `5d332d6`.
+  The occupied planning worktree and `feat/guided-onboarding` branch were
+  preserved unchanged.
 - Bare interactive `allset` now continues from shared configuration review into
   deliberate coding-client/account choices, private Box scope/account binding,
   bounded compute consent, coding-only checkout preparation, native sign-ins,
