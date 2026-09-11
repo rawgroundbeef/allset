@@ -38,11 +38,10 @@ The nearest .allset must match origin and any saved project binding.
 Malformed documents, unsupported fields, symlinks, and identity conflicts fail;
 they never fall through into inference or first-time provisioning.
 
-Absent a manifest, interactive current-project open enters configuration review
-and, after approval, continues into guided environment onboarding. Saved registry bindings
-are displayed for confirmation before creating the file. New repositories ask
-only for the inferred project name and compute provider; the normal path has no
-mode-selection menu. Agent-assisted configuration remains available separately
+Absent a manifest, interactive current-project open accepts validated repository
+identity and single-provider defaults, then continues into guided environment onboarding.
+Saved registry bindings are reused without confirmation. The normal path asks only
+for choices it cannot infer and has no mode-selection menu. Agent-assisted configuration remains available separately
 through `allset config guide`.
 Explicit `init` reopens the configuration-only review without overwriting it. Named shortcuts and noninteractive calls keep
 registry inference for continuity. An unknown repository enters init only during

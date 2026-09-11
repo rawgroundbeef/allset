@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
 
+	"charm.land/huh/v2"
 	"github.com/rawgroundbeef/allset/internal/config"
 	"github.com/rawgroundbeef/allset/internal/strategy"
 )
@@ -40,7 +42,9 @@ func (a App) onboardingClients(reader *bufio.Reader, p config.Project) ([]strate
 	if reader == nil {
 		return nil, errors.New("first-time onboarding needs an interactive terminal")
 	}
-	fmt.Fprintln(a.Out, "\nCoding tools")
+	if len(p.MCPs) > 0 || len(p.Skills) > 0 || len(p.SessionEnvironment) > 0 {
+		fmt.Fprintln(a.Out, "\nIncludes")
+	}
 	if len(p.MCPs) > 0 {
 		fmt.Fprintln(a.Out, "  MCPs:   "+strings.Join(sortedKeys(p.MCPs), ", "))
 	}
@@ -50,13 +54,13 @@ func (a App) onboardingClients(reader *bufio.Reader, p config.Project) ([]strate
 	if len(p.SessionEnvironment) > 0 {
 		fmt.Fprintf(a.Out, "  Scoped environment values: %d\n", len(p.SessionEnvironment))
 	}
-	raw, err := setupAnswer(reader, a.Out, "Clients (codex, claude, cursor)", "codex")
+	selected, err := a.selectCodingClients(reader)
 	if err != nil {
 		return nil, err
 	}
 	seen := map[string]bool{}
 	clients := []strategy.ClientBinding{}
-	for _, item := range strings.Split(raw, ",") {
+	for _, item := range selected {
 		client := strings.TrimSpace(strings.ToLower(item))
 		if (client != "codex" && client != "claude" && client != "cursor") || seen[client] {
 			return nil, errors.New("coding clients must uniquely select codex, claude, or cursor")
@@ -73,6 +77,66 @@ func (a App) onboardingClients(reader *bufio.Reader, p config.Project) ([]strate
 		clients = append(clients, strategy.ClientBinding{Client: client, ExpectedAccount: account})
 	}
 	return clients, nil
+}
+
+func (a App) selectCodingClients(reader *bufio.Reader) ([]string, error) {
+	if a.richTerminal() {
+		selected := []string{"codex"}
+		keys := huh.NewDefaultKeyMap()
+		keys.MultiSelect.Toggle.SetKeys("space")
+		keys.MultiSelect.Toggle.SetHelp("space", "select")
+		field := huh.NewMultiSelect[string]().
+			Title("Choose your coding agents").
+			Filterable(false).
+			Height(4).
+			Limit(3).
+			Options(
+				huh.NewOption("Codex", "codex").Selected(true),
+				huh.NewOption("Claude Code", "claude"),
+				huh.NewOption("Cursor", "cursor"),
+			).
+			Value(&selected).
+			Validate(func(values []string) error {
+				if len(values) == 0 {
+					return errors.New("select at least one coding agent")
+				}
+				return nil
+			})
+		err := huh.NewForm(huh.NewGroup(field)).
+			WithInput(a.In).
+			WithOutput(a.Out).
+			WithKeyMap(keys).
+			WithShowHelp(true).
+			Run()
+		if err != nil {
+			return nil, errors.New("setup cancelled; configuration and VMs were left unchanged")
+		}
+		return selected, nil
+	}
+
+	fmt.Fprintln(a.Out, "\nCoding agents")
+	fmt.Fprintln(a.Out, "  codex (default) · claude · cursor")
+	fmt.Fprintln(a.Out, "  Enter one or more names, separated by commas.")
+	raw, err := setupAnswer(reader, a.Out, "Agents", "codex")
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(raw, ","), nil
+}
+
+func (a App) richTerminal() bool {
+	if os.Getenv("ALLSET_ACCESSIBLE") != "" || os.Getenv("TERM") == "dumb" {
+		return false
+	}
+	isTerminal := func(value any) bool {
+		file, ok := value.(*os.File)
+		if !ok {
+			return false
+		}
+		info, err := file.Stat()
+		return err == nil && info.Mode()&os.ModeCharDevice != 0
+	}
+	return isTerminal(a.In) && isTerminal(a.Out)
 }
 
 func sortedKeys[T any](values map[string]T) []string {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -75,7 +76,8 @@ No terminal setting belongs in project config. No client takeover.
 Projects/status/doctor and dry-run accept --json. Doctor exits 2 for incomplete
 checks, 1 for failures. --config PATH must precede the command.
 
-Without .allset, interactive open reviews shared settings, asks for selected coding
+Without .allset, interactive open uses the repository identity and default compute,
+then asks for selected coding
 clients and their intended accounts, then continues into the private Box setup and
 native sign-in flow. Existing valid setup is reused. Explicit allset init only reviews
 configuration. Read-only commands and dry-run never create configuration or sign in.
@@ -385,7 +387,7 @@ func (a App) Run(ctx context.Context, args []string) int {
 			return a.fail(locationErr)
 		}
 		if location.ManifestPath == "" {
-			p, reader, setupErr := a.initialize(ctx, f, nil)
+			p, reader, setupErr := a.initialize(ctx, f, nil, true)
 			if setupErr != nil {
 				return a.fail(setupErr)
 			}
@@ -410,6 +412,10 @@ func (a App) Run(ctx context.Context, args []string) int {
 			}
 			if a.Exec == nil {
 				return a.fail(errors.New("interactive executor is unavailable"))
+			}
+			path := filepath.Join(location.Root, config.ProjectFilename)
+			if setupErr = config.WriteProject(path, config.Manifest{Version: 1, Project: p}); setupErr != nil {
+				return a.fail(setupErr)
 			}
 			fmt.Fprintf(a.Out, "%s · onboarding\n", p.Name)
 			if setupErr = a.Exec(plan); setupErr != nil {

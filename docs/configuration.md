@@ -32,9 +32,9 @@ or invalid file never falls back to some other saved project.
 `allset.schema.json`.
 
 Without a file, bare interactive `allset` starts the guided onboarding flow.
-It shows an existing repository registration for review before saving it,
-without changing account bindings. For an unfamiliar repository it explains shared and
-private settings, infers the origin, asks for a name and compute service, and
+It uses an existing repository registration without asking the developer to
+reconfirm known values. For an unfamiliar repository it infers the origin, project
+name, and sole available compute service, then
 saves a strict project config. It then asks for private coding-client/account
 choices and continues through Box association, native sign-in, coding-only
 repository preparation, integration application, and connection in one invocation.
@@ -43,13 +43,17 @@ repository file. `allset init` reopens the review even when `.allset` exists;
 keeping that configuration leaves the file unchanged. Noninteractive init
 requires `--yes`.
 
-The normal path shows a compact project summary and one confirmation for saved
-settings. A new repository asks directly for its inferred name and provider; it
-does not present a setup-mode menu. `allset config guide` remains available when
+The normal path shows a compact project summary and asks only for choices it cannot
+infer. Project-name and single-provider defaults are accepted silently, and saved
+settings are not reconfirmed. `allset config guide` remains available when
 the developer wants agent-assisted configuration. Continuing creates a versioned
 private profile and uniquely named Box environment, disables ambient provider
 credential injection before compute creation, and journals each stage for retry.
 Dry runs and read-only commands never run this flow.
+
+In a terminal, coding-agent selection is a checkbox list: arrow keys move,
+Space selects, and Enter continues. Codex is selected initially. Set
+`ALLSET_ACCESSIBLE=1` to use a plain line-oriented prompt instead.
 
 This is a real config discovery/init path, not yet an automatic installer for
 arbitrary projects. Existing setup/services/credentials continue to live in the

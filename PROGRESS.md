@@ -13,11 +13,14 @@
   MCP/skill projection, scoped Infisical session values, and the selected caller
   handoff. Explicit `allset init`, inspection, status, diagnosis, and dry-run do
   not enter this mutation path.
-- Follow-up UX feedback removed the three-option setup preamble and internal
-  ownership narration from the normal path. New repositories now show one compact
-  heading, ask directly for name/provider, and continue to coding tools. Saved
-  settings use a single yes/no confirmation; agent guidance remains an explicit
-  `allset config guide` command.
+- Follow-up UX feedback removed the three-option setup preamble, internal ownership
+  narration, and redundant project-name/provider questions from the normal path.
+  New repositories accept inferred defaults silently and show one compact identity
+  before the first private choice. Coding-agent choice is now a visible checkbox
+  list with Codex selected and an explicit keyboard legend; the line-oriented
+  accessible fallback explains its input grammar. Saved settings are not
+  reconfirmed, and cancellation before validated private choices leaves no partial
+  `.allset`; agent guidance remains an explicit `allset config guide` command.
 - Shared `.allset` contracts now support strict repository-relative skills,
   session environment references, and explicit native HTTP MCP OAuth. Private
   profiles retain provider/client/GitHub/Infisical choices. The onboarding journal
@@ -35,7 +38,10 @@
   tests cover continuous and resumed entry, configuration-only init, coding-only
   setup exclusion, Box account mismatch and timed-out environment reconciliation,
   native executable preservation, skill conflicts/supporting files, and scoped
-  launch environment/argv/cwd behavior.
+  launch environment/argv/cwd behavior. A disposable real TTY checkout rendered
+  `hello-world`, `octocat/hello-world · Box`, then all 3 coding agents with Codex
+  selected and `space select · ↑ up · ↓ down · enter submit`; Enter advanced to
+  the Codex account email. No project-name or single-provider prompt appeared.
 - **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built. The Linux
   amd64 archive passed the network-disabled container proof: continuous setup and
   cancellation guards, bundled runtime, synthetic login restore, native MCP

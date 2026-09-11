@@ -94,7 +94,7 @@ func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) 
 	}
 }
 
-func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
+func TestBareSetupUsesSavedBindingWithoutRedundantConfirmation(t *testing.T) {
 	for _, args := range [][]string{nil, {"."}, {"open"}, {"open", "."}} {
 		a, out, plans := appFixture(t)
 		root := a.CurrentDir
@@ -110,7 +110,7 @@ func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		input := strings.NewReader("y\n")
+		input := strings.NewReader("")
 		a.In = input
 		if code := a.Run(context.Background(), args); code != 0 {
 			t.Fatal(args, code, out.String())
@@ -120,8 +120,8 @@ func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 			manifest.Backend != registry.Projects[0].Backend || strings.Join(manifest.Aliases, ",") != "joy" {
 			t.Fatal("saved project binding was not preserved", manifest, err)
 		}
-		if len(*plans) != 1 || (*plans)[0].Project != "dashboard" || !strings.Contains(out.String(), "Use these settings?") {
-			t.Fatal("setup skipped review or did not continue to the environment")
+		if len(*plans) != 1 || (*plans)[0].Project != "dashboard" || strings.Contains(out.String(), "Use these settings?") {
+			t.Fatal("setup repeated known choices or did not continue to the environment")
 		}
 		after, _ := os.ReadFile(a.ConfigPath)
 		if !bytes.Equal(before, after) || strings.Contains(out.String(), "SECRET") {
@@ -134,40 +134,28 @@ func TestBareSetupReviewsSavedBindingAndContinuesOpening(t *testing.T) {
 }
 
 func TestSetupCancellationLeavesExistingStateUntouched(t *testing.T) {
-	for _, existing := range []bool{false, true} {
-		for _, answer := range []string{"", "n\n", "invalid\nn\n"} {
-			a, out, plans := appFixture(t)
-			path := filepath.Join(a.CurrentDir, config.ProjectFilename)
-			body := []byte(`{"version":1,"name":"dashboard","repository":"acme/dashboard","backend":"box"}`)
-			if existing {
-				if err := os.WriteFile(path, body, 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			before, err := os.ReadFile(a.ConfigPath)
-			if err != nil {
-				t.Fatal(err)
-			}
-			a.In = strings.NewReader(answer)
-			var args []string
-			if existing {
-				args = []string{"init"}
-			}
-			if code := a.Run(context.Background(), args); code != 1 || len(*plans) != 0 {
-				t.Fatal(code, out.String(), "setup dispatched an environment operation")
-			}
-			after, err := os.ReadFile(a.ConfigPath)
-			if err != nil || !bytes.Equal(before, after) {
-				t.Fatal("registry changed", err)
-			}
-			manifest, err := os.ReadFile(path)
-			if existing {
-				if err != nil || !bytes.Equal(body, manifest) {
-					t.Fatal("existing config changed", err)
-				}
-			} else if !errors.Is(err, os.ErrNotExist) {
-				t.Fatal("setup wrote unapproved config", err)
-			}
+	for _, answer := range []string{"", "n\n", "invalid\nn\n"} {
+		a, out, plans := appFixture(t)
+		path := filepath.Join(a.CurrentDir, config.ProjectFilename)
+		body := []byte(`{"version":1,"name":"dashboard","repository":"acme/dashboard","backend":"box"}`)
+		if err := os.WriteFile(path, body, 0600); err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.ReadFile(a.ConfigPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.In = strings.NewReader(answer)
+		if code := a.Run(context.Background(), []string{"init"}); code != 1 || len(*plans) != 0 {
+			t.Fatal(code, out.String(), "setup dispatched an environment operation")
+		}
+		after, err := os.ReadFile(a.ConfigPath)
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatal("registry changed", err)
+		}
+		manifest, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(body, manifest) {
+			t.Fatal("existing config changed", err)
 		}
 	}
 }
@@ -202,7 +190,7 @@ func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/project.git"), nil
 	}
-	a.In = strings.NewReader("\n\ncodex\nwork@example.test\n")
+	a.In = strings.NewReader("\nwork@example.test\n")
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -213,9 +201,11 @@ func TestMissingConfigEntersContinuousGuidedOnboarding(t *testing.T) {
 	if len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
 		t.Fatal("guided setup did not dispatch onboarding", *plans)
 	}
-	if !strings.Contains(out.String(), "Compute provider") || !strings.Contains(out.String(), "Coding tools") ||
+	if strings.Contains(out.String(), "Project name") || strings.Contains(out.String(), "Compute provider") ||
+		!strings.Contains(out.String(), "project\nnew/project · Box\n\nCoding agents\n") ||
+		!strings.Contains(out.String(), "Enter one or more names, separated by commas.\nAgents [codex]:") ||
 		strings.Contains(out.String(), "How would you like to continue?") {
-		t.Fatal("guided setup was missing or retained the old menu")
+		t.Fatal("guided setup repeated inferred choices or retained the old menu")
 	}
 }
 
@@ -252,7 +242,7 @@ func TestBareDryRunFlagsAndInitCancellation(t *testing.T) {
 		t.Fatal(code, out.String())
 	}
 	if _, err := os.Stat(filepath.Join(a.CurrentDir, config.ProjectFilename)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("cancelled setup wrote config")
+		t.Fatal("cancelled private setup wrote project configuration", err)
 	}
 }
 
@@ -266,14 +256,14 @@ func TestInitDoesNotEchoCredentialBearingOrigin(t *testing.T) {
 	}
 }
 
-func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testing.T) {
+func TestFreshSetupUsesInferredDefaultsAndNextRunUsesSavedConfiguration(t *testing.T) {
 	a, out, plans := appFixture(t)
 	s := &testService{}
 	a.Strategies = strategy.Registry{"test-service": s}
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/repo.git"), nil
 	}
-	a.In = strings.NewReader("demo\n\n")
+	a.In = strings.NewReader("")
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -290,7 +280,7 @@ func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testi
 		t.Fatal(code, out.String())
 	}
 	after, _ := os.ReadFile(filepath.Join(a.CurrentDir, config.ProjectFilename))
-	if !bytes.Equal(before, after) || len(*plans) != 2 || (*plans)[1].Project != "demo" ||
+	if !bytes.Equal(before, after) || len(*plans) != 2 || (*plans)[1].Project != "repo" ||
 		(*plans)[0].Backend != "test-service" || strings.Contains(out.String(), "Compute provider") {
 		t.Fatal("reopen repeated setup")
 	}
@@ -346,7 +336,7 @@ func TestInteractiveOpenContinuesOnboardingAfterConfigurationOnlyInit(t *testing
 	if code := a.Run(context.Background(), nil); code != 0 || len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
 		t.Fatal(code, out.String(), *plans)
 	}
-	if !strings.Contains(out.String(), "Coding tools") {
+	if !strings.Contains(out.String(), "Coding agents") {
 		t.Fatal("missing private onboarding choices", out.String())
 	}
 }

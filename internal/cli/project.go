@@ -73,7 +73,7 @@ func (a App) current(ctx context.Context, f config.File) (config.Project, error)
 
 // initialize creates a reviewable repository entry point. It never provisions a
 // VM, guesses credentials, executes a package script, or replaces an existing file.
-func (a App) initialize(ctx context.Context, f config.File, args []string) (config.Project, *bufio.Reader, error) {
+func (a App) initialize(ctx context.Context, f config.File, args []string, continuous bool) (config.Project, *bufio.Reader, error) {
 	flags := a.flags("init")
 	name := flags.String("name", "", "Project name")
 	backend := flags.String("backend", "", "Compute provider")
@@ -115,13 +115,21 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 		return p, nil, known
 	}
 	var reader *bufio.Reader
+	if continuous {
+		reader, err = a.setupReader()
+		if err != nil {
+			return p, nil, err
+		}
+	}
 	if known == nil {
 		if (*name != "" && p.Name != *name) || (*backend != "" && p.Backend != *backend) {
 			return p, nil, errors.New("requested project identity conflicts with this repository's saved environment")
 		}
-		fmt.Fprintln(a.Out, "Using this repository's saved project settings.")
+		if !continuous {
+			fmt.Fprintln(a.Out, "Using this repository's saved project settings.")
+		}
 	} else {
-		if !*accept {
+		if !*accept && !continuous {
 			reader, err = a.setupReader()
 			if err != nil {
 				return p, nil, err
@@ -142,7 +150,7 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 		if provider == "" && len(a.Strategies.Names()) == 1 {
 			provider = a.Strategies.Names()[0]
 		}
-		if !*accept {
+		if !*accept && !continuous {
 			fmt.Fprintf(a.Out, "Set up this project\n  Repository: %s\n", repo)
 			inferred, err = setupAnswer(reader, a.Out, "Project name", inferred)
 			if err != nil {
@@ -153,9 +161,21 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 				return p, nil, err
 			}
 		}
+		if provider == "" {
+			if reader == nil {
+				reader, err = a.setupReader()
+				if err != nil {
+					return p, nil, err
+				}
+			}
+			provider, err = setupAnswer(reader, a.Out, "Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", "")
+			if err != nil {
+				return p, nil, err
+			}
+		}
 		p = config.Project{Name: inferred, Repository: repo, Backend: provider}
 	}
-	if !*accept && known == nil {
+	if !*accept && known == nil && !continuous {
 		reader, err = a.reviewSetup(p, false, reader)
 		if err != nil {
 			return p, nil, err
@@ -167,12 +187,26 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 	if err := config.CheckLocalBinding(f, p); err != nil {
 		return p, nil, err
 	}
-	path := filepath.Join(location.Root, config.ProjectFilename)
-	if err := config.WriteProject(path, config.Manifest{Version: 1, Project: p}); err != nil {
-		return p, nil, err
+	if continuous {
+		a.printProjectSummary(p)
+	} else {
+		path := filepath.Join(location.Root, config.ProjectFilename)
+		if err := config.WriteProject(path, config.Manifest{Version: 1, Project: p}); err != nil {
+			return p, nil, err
+		}
+		fmt.Fprintf(a.Out, "Saved .allset — %s on %s\n", p.Name, p.Backend)
 	}
-	fmt.Fprintf(a.Out, "Saved .allset — %s on %s\n", p.Name, p.Backend)
 	return p, reader, nil
+}
+
+func (a App) printProjectSummary(p config.Project) {
+	repository, _ := config.RepositoryKey(p.Repository)
+	repository = strings.TrimPrefix(repository, "github.com/")
+	provider := p.Backend
+	if provider != "" {
+		provider = strings.ToUpper(provider[:1]) + provider[1:]
+	}
+	fmt.Fprintf(a.Out, "%s\n%s · %s\n", p.Name, repository, provider)
 }
 
 func (a App) initCommand(ctx context.Context, args []string) int {
@@ -182,7 +216,7 @@ func (a App) initCommand(ctx context.Context, args []string) int {
 	} else if err != nil {
 		return a.fail(err)
 	}
-	p, _, err := a.initialize(ctx, f, args)
+	p, _, err := a.initialize(ctx, f, args, false)
 	if err != nil {
 		return a.fail(err)
 	}
