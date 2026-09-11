@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import uuid
 
 import agent_auth
@@ -40,6 +41,29 @@ def _validate_journal(value, name, repository):
 
 def _scope_args(scope):
     return ['--org', scope]
+
+
+def _public_repository(repository):
+    """Probe GitHub without ambient credentials so private access is never inferred."""
+    name = repository_access.github_repository(repository)
+    with tempfile.TemporaryDirectory(prefix='allset-public-repo-') as directory:
+        environment = {
+            'PATH': os.environ.get('PATH', '/usr/bin:/bin'),
+            'HOME': directory,
+            'XDG_CONFIG_HOME': directory,
+            'GIT_CONFIG_NOSYSTEM': '1',
+            'GIT_TERMINAL_PROMPT': '0',
+        }
+        try:
+            result = subprocess.run([
+                'git', '-c', 'credential.helper=', '-c', 'core.askPass=',
+                '-c', 'credential.interactive=never', 'ls-remote',
+                'https://github.com/' + name + '.git'],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                env=environment, timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+    return result.returncode == 0
 
 
 def _has_environment(value, name):
@@ -156,24 +180,18 @@ def ensure_profile(controller, request):
     if not providers:
         raise ValueError('Choose at least one coding client')
 
-    personal_skills = journal.get('personal_skills') if journal else None
-    if personal_skills is None:
-        personal_skills = []
-        raw_skills = input('Personal skill directories (comma-separated absolute paths, blank for none): ').strip()
-        names = set()
-        for raw in raw_skills.split(',') if raw_skills else []:
-            path = Path(raw.strip()).expanduser()
-            name_for_skill = identifier(path.name)
-            if name_for_skill in names or not path.is_absolute() or path.is_symlink() or not (path / 'SKILL.md').is_file():
-                raise ValueError('Personal skills require unique absolute directories containing SKILL.md')
-            names.add(name_for_skill); personal_skills.append({'name': name_for_skill, 'path': str(path)})
+    personal_skills = journal.get('personal_skills') if journal else []
+
+    labels = {'codex': 'Codex', 'claude': 'Claude Code', 'cursor': 'Cursor'}
+    selected_clients = ', '.join(labels[client] for client in ('codex', 'claude', 'cursor') if client in providers)
+    print('Next: prepare Box, then open browser sign-in for ' + selected_clients + '.', flush=True)
 
     github = journal.get('github') if journal else None
-    if not journal:
-        print('Repository access is independent from model and Box accounts.', flush=True)
-        github_login = input('GitHub CLI account login (leave blank for a public repository): ').strip()
-        if github_login:
-            github = {'provider': 'github-cli', 'account_login': github_login}
+    if not journal and not _public_repository(project['repository']):
+        github_login = input("GitHub account (public access wasn't verified): ").strip()
+        if not github_login:
+            raise ValueError('Repository setup requires a GitHub account when public access is not verified')
+        github = {'provider': 'github-cli', 'account_login': github_login}
     if github:
         environment_for_github = github_auth.clean_environment()
         token = github_auth.run_native(['gh', 'auth', 'token', '--hostname', 'github.com',
@@ -197,8 +215,7 @@ def ensure_profile(controller, request):
                          'environment': environment_name, 'principal_id': principal,
                          'credential_ref': credential_ref}
 
-    print('Box account and billing are independent from coding-client accounts.', flush=True)
-    scope = journal.get('billing_scope') if journal else input('Box billing organization ID or name (including your personal organization): ').strip()
+    scope = journal.get('billing_scope') if journal else input('Box billing [personal]: ').strip() or 'personal'
     if not re.fullmatch(r'[A-Za-z0-9._-]{1,128}', scope or ''):
         raise ValueError('Box billing scope requires an explicit organization ID or name')
     scope_args = _scope_args(scope)

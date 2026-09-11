@@ -22,6 +22,9 @@
   accessible fallback explains its input grammar. Saved settings are not
   reconfirmed, and cancellation before validated private choices leaves no partial
   `.allset`; agent guidance remains an explicit `allset config guide` command.
+  Later feedback removed the empty personal-skills question, detects public GitHub
+  repositories without ambient credentials, defaults Box billing visibly to
+  `personal`, and states that selected-client sign-in follows Box preparation.
 - Shared `.allset` contracts now support strict repository-relative skills,
   session environment references, and explicit native HTTP MCP OAuth. Private
   profiles retain provider/client/GitHub/Infisical choices. The onboarding journal
@@ -44,12 +47,21 @@
   selected and `space select · ↑ up · ↓ down · enter submit`. A second real TTY
   check advanced directly to private setup without a project-name, single-provider,
   or coding-client account-email prompt, then cancelled without a provider call.
+  After the optional-prompt fix, a fresh public-repository TTY selected all 3 and
+  rendered `Next: prepare Box, then open browser sign-in for Codex, Claude Code,
+  Cursor.` followed by `Box billing [personal]:`; cancellation again made no
+  provider call.
 - **Packaged local/mock:** four macOS/Linux amd64/arm64 archives built in
-  `/private/tmp/allset-guided-release-20260911-11`. The Linux
+  `/private/tmp/allset-guided-release-20260911-15`. The Linux
   amd64 archive passed the network-disabled container proof: continuous setup and
   cancellation guards, bundled runtime, synthetic login restore, native MCP
   projection, terminal display, workspace reuse, work collection, and ownership
   failures. Box, SSH, Herdr, native accounts, and MCPs were simulated.
+- **Interrupted local setup:** the reported `hello-world` interruption left only
+  the shared `.allset`; no private profile, onboarding journal, machine record,
+  environment, or terminal had been created. The development binary resumes that
+  state as `hello-world · onboarding`. The installed binary is an older build with
+  the same prerelease version string and still reports the pre-slice limitation.
 - Installed read-only native versions inspected: Box `0.1.228-ascii-prod1`, Codex
   `0.154.0`, Claude Code `2.1.268`, Cursor Agent `2026.08.04-aaa8809`, and
   Infisical `0.43.121`. No VM, provider environment, browser login, credential,

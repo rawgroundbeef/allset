@@ -337,7 +337,8 @@ func TestInteractiveOpenContinuesOnboardingAfterConfigurationOnlyInit(t *testing
 	if code := a.Run(context.Background(), nil); code != 0 || len(*plans) != 1 || (*plans)[0].Operation != "onboard" {
 		t.Fatal(code, out.String(), *plans)
 	}
-	if !strings.Contains(out.String(), "Coding agents") || strings.Contains(out.String(), "account email") {
+	if !strings.Contains(out.String(), "Coding agents") || !strings.Contains(out.String(), "dashboard · onboarding") ||
+		strings.Contains(out.String(), "account email") || strings.Contains(out.String(), "dashboard · open") {
 		t.Fatal("missing private onboarding choices", out.String())
 	}
 }

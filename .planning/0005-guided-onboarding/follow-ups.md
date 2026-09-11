@@ -7,6 +7,10 @@ delivery, and selected skill application are current-slice gaps, not deferrals.
 
 ## Deferred Slice Ideas
 
+- **2026-09-11 — Add explicit personal-skill management.** The minimal first-run
+  path no longer asks for optional absolute skill directories. Existing private
+  profiles retain support, while adding or removing personal skill sources needs
+  a separate explicit settings command with the same ownership and conflict checks.
 - **2026-09-11 — Compare VM providers and shape provider selection.** Requested
   by the user after first-time Box onboarding. Research persistent remote coding
   environments: native account onboarding, API/CLI support, lifecycle and storage

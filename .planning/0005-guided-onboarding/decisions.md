@@ -84,6 +84,15 @@ then reads the public identity from native status and records it in the private
 project binding. Later sign-ins must match that verified identity before AllSet
 caches credentials. A credential without a verified identity remains pending.
 
+### D-12 — Keep optional setup off the default path
+
+The default path does not ask for personal skill directories. Repository-declared
+skills remain automatic; a dedicated way to add new private skill sources is a
+follow-up rather than a required first-run prompt. Probe GitHub public access without ambient
+credentials and ask for a named GitHub account only when public access cannot be
+verified. Before Box setup, state that coding-client sign-in follows environment
+preparation so the next prompt does not look like a missing authentication step.
+
 ## Superseded planning
 
 ### D-05 — App and preview required: superseded by D-07

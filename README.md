@@ -52,8 +52,9 @@ allset --dry-run --json
 Run `allset` in the project for the continuous onboarding walkthrough. When
 `.allset` is missing, it uses the Git identity and sole compute provider as defaults,
 asks which coding clients to prepare, displays Box scope/lifetime terms, runs each
-client's native sign-in, records the verified identity, and prepares the repository and integrations,
-and enters through the caller's selected connection interface. A returning open
+client's native sign-in, records the verified identity, and prepares the repository
+and integrations. Public GitHub access and empty optional settings are inferred
+without prompts. It then enters through the caller's selected connection interface. A returning open
 reuses completed state and repairs an incomplete onboarding journal.
 The coding-agent chooser uses arrow keys, Space, and Enter; Codex starts selected.
 Set `ALLSET_ACCESSIBLE=1` for line-oriented prompts.

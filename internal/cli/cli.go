@@ -514,7 +514,11 @@ func (a App) Run(ctx context.Context, args []string) int {
 	if a.Exec == nil {
 		return a.fail(errors.New("interactive executor is unavailable"))
 	}
-	fmt.Fprintf(a.Out, "%s · %s\n", p.Name, operation)
+	label := plan.Operation
+	if label == "onboard" {
+		label = "onboarding"
+	}
+	fmt.Fprintf(a.Out, "%s · %s\n", p.Name, label)
 	if err := a.Exec(plan); err != nil {
 		return a.fail(err)
 	}

@@ -107,10 +107,10 @@ restarted or switched.
 `skills` maps a stable name to a repository-relative directory containing
 `SKILL.md`, with optional `agents`. AllSet copies the complete selected directory
 to each supported native discovery scope, records its digest, and refuses to
-overwrite unmanaged edits. First-time setup can also select private absolute
-personal skill directories; those paths remain in the private profile, and their
-bounded contents are transferred to the same managed projection without entering
-the shared manifest.
+overwrite unmanaged edits. Existing private profiles may also contain explicitly
+selected absolute personal skill directories; first-time setup does not ask for
+optional personal skills on the default path. Adding new personal directories is
+not yet exposed in that minimal flow.
 
 `session_environment` maps an uppercase variable name to an Infisical
 `secret_path` and `secret_key`, plus explicit client recipients and optional MCP

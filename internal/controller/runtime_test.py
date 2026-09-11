@@ -391,9 +391,15 @@ class RuntimeTests(unittest.TestCase):
             request = {'project': {'name': 'dashboard', 'repository': 'acme/dashboard', 'backend': 'box'},
                        'clients': [{'client': 'codex'}]}
             environment = []
-            with patch('builtins.input', side_effect=['', '', 'personal-org', 'yes']):
+            output = io.StringIO()
+            with patch.object(onboarding, '_public_repository', return_value=True), \
+                    patch('builtins.input', side_effect=['personal-org', 'yes']), \
+                    contextlib.redirect_stdout(output):
                 profile, clients = onboarding.ensure_profile(controller, request)
             self.assertEqual(clients, ['codex'])
+            self.assertIn('Next: prepare Box, then open browser sign-in for Codex.', output.getvalue())
+            self.assertNotIn('Personal skill', output.getvalue())
+            self.assertNotIn('GitHub account', output.getvalue())
             self.assertTrue(profile['provider_binding']['safe_for_third_parties'])
             self.assertEqual(sum(call[:2] == ('env', 'new') for call in calls), 1)
             saved_journal = json.loads((root / 'projects/dashboard/onboarding.json').read_text())
@@ -405,6 +411,18 @@ class RuntimeTests(unittest.TestCase):
             foreign = types.SimpleNamespace(box=lambda *args: {'account': {'email': 'other@example.test'}})
             with self.assertRaisesRegex(ValueError, 'does not match'):
                 onboarding.verify_provider_binding(foreign, profile)
+
+    def test_public_repository_probe_ignores_ambient_credentials(self):
+        completed = types.SimpleNamespace(returncode=0)
+        with patch.object(onboarding.subprocess, 'run', return_value=completed) as run:
+            self.assertTrue(onboarding._public_repository('https://github.com/octocat/hello-world'))
+        argv = run.call_args.args[0]
+        environment = run.call_args.kwargs['env']
+        self.assertIn('credential.helper=', argv)
+        self.assertEqual(argv[-1], 'https://github.com/octocat/hello-world.git')
+        self.assertEqual(environment['GIT_CONFIG_NOSYSTEM'], '1')
+        self.assertEqual(environment['GIT_TERMINAL_PROMPT'], '0')
+        self.assertNotIn('GH_TOKEN', environment)
 
     def test_existing_profile_with_unverified_identity_still_requires_native_login(self):
         with tempfile.TemporaryDirectory() as tmp:
