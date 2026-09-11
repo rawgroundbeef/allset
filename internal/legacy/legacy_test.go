@@ -40,9 +40,6 @@ func fixture(t *testing.T) (Backend, config.Project) {
 	put(t, b.Root, "tasks/project-dashboard/task.json", Machine{Project: p.Name, TaskID: "project-dashboard", ID: "bx_example", State: "running"})
 	put(t, b.Root, "projects/dashboard/shell.json", map[string]string{"task_id": "shell-dashboard"})
 	put(t, b.Root, "tasks/shell-dashboard/task.json", map[string]string{"project": p.Name, "role": "shell"})
-	for _, name := range []string{"projects.py", "project_shell.py"} {
-		put(t, b.Root, "controller/"+name, map[string]string{})
-	}
 	return b, p
 }
 
@@ -107,8 +104,8 @@ func TestPlanTargetsIntendedProjectAndCollectOwnership(t *testing.T) {
 		if plan.Project != p.Name || strings.Contains(plan.DisplayCommand(), "SECRET") {
 			t.Fatal(plan)
 		}
-		if (op == "open" || op == "resume") && plan.Args[3] != p.Name {
-			t.Fatal(plan)
+		if (op == "open" || op == "resume") && plan.Args[len(plan.Args)-3] != p.Name {
+			t.Fatal("wrong bundled runtime project argument")
 		}
 	}
 	if _, err := b.Plan(p, "open", "", 7201, "herdr"); err == nil {

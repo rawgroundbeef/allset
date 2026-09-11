@@ -38,7 +38,6 @@ func appFixture(t *testing.T) (App, *bytes.Buffer, *[]execution.Plan) {
 		}
 	}
 	write("projects/dashboard/profile.json", map[string]any{"name": "dashboard", "repository": "acme/dashboard", "agent_profile": "dashboard-work", "credentials": "SECRET"})
-	write("controller/project_shell.py", map[string]string{})
 	f := config.File{Version: 3, Projects: []config.Project{{Name: "dashboard", Aliases: []string{"joy"}, Repository: "acme/dashboard", Backend: "box"}}}
 	path := filepath.Join(root, "config.json")
 	if err := config.WriteNew(path, f); err != nil {
@@ -64,8 +63,8 @@ func TestAliasAndRepoInferenceDispatchWithoutPrompt(t *testing.T) {
 			t.Fatal("not dispatched once")
 		}
 		p := (*plans)[0]
-		if p.Project != "dashboard" || !p.Interactive || p.Args[3] != "dashboard" || p.Attachment != "ssh" {
-			t.Fatal(p)
+		if p.Project != "dashboard" || !p.Interactive || p.Args[len(p.Args)-3] != "dashboard" || p.Attachment != "ssh" {
+			t.Fatal("wrong project, attachment, or interactivity")
 		}
 		for _, arg := range p.Args {
 			if arg == "--task-file" || arg == "--login" {

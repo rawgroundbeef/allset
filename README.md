@@ -12,12 +12,13 @@ opens a shell in the terminal you're already using. Account bindings belong to
 you; the configuration belongs to the project. Box is the first compute provider.
 
 **Early alpha:** this repository implements configuration discovery, strict
-validation, existing project connections, and native MCP configuration. VM setup
-still requires a separately installed prototype Box workspace controller at
-`~/.local/share/box-herdr`. That controller is not distributed here. A fresh
-checkout can build the CLI and create config, but cannot yet provision a complete
-environment on a new laptop. [Extraction work](docs/architecture.md#remaining-extraction)
-is the next priority. Issues and contributions are welcome.
+validation, existing project connections, and native MCP configuration. The Box
+workspace controller is included in the executable. Existing private project
+profiles and credentials still live under `~/.local/share/box-herdr`; creating
+those bindings from `.allset` is not implemented yet. A fresh checkout can build
+the complete CLI, but setting up an unfamiliar project still needs that private
+configuration. See [remaining work](docs/architecture.md#remaining-extraction).
+Issues and contributions are welcome.
 
 ## Build
 
@@ -28,9 +29,17 @@ go build -o bin/allset ./cmd/allset
 ./bin/allset --help
 ```
 
-Python 3.11+, Git, SSH, the Box CLI, and the existing controller are needed for
-the current Box adapter. Node/npm is needed for the Trigger.dev MCP preset.
+Python 3.11+, Git, SSH, and the native Box CLI at `~/.ascii/bin/box` are needed for
+the current Box adapter. Herdr modes also require its native executable at
+`~/.local/share/box-herdr/bin/herdr`. Node/npm is needed for the Trigger.dev MCP preset.
 There is no published npm installation to recommend yet.
+
+Controller source is versioned in `internal/controller/runtime` and embedded at
+build time. Running a lifecycle command extracts a verified copy to
+`~/.cache/allset/controller/<revision>` (respecting `XDG_CACHE_HOME`). Inspection
+and dry-run do not install it. AllSet does not execute the old private controller
+folder. Keep the existing state directory: it still holds your project bindings,
+credentials, machine records, and native Herdr installation.
 
 ## Configure a project
 
@@ -64,7 +73,7 @@ VM. Missing provider setup is reported as incomplete.
 Commit `.allset` with the project. Keep credentials out of it. Optional `aliases`
 and agent-specific MCP declarations are supported. Setup commands, services,
 previews, agent accounts, Infisical bindings, and skills are not yet declarative
-fields; unknown fields fail validation. Existing controller profiles retain
+fields; unknown fields fail validation. Existing private project profiles retain
 those settings privately.
 
 Named shortcuts use `~/.config/allset/config.json`, respecting `XDG_CONFIG_HOME`.
@@ -83,7 +92,7 @@ allset status                # VM state; does not start or stop it
 allset connect               # Connect only; refuses a stopped VM
 allset mcp sync               # Apply declared MCPs on the running VM
 allset mcp login trigger      # Project-specific native Trigger sign-in
-allset login dashboard codex  # Agent sign-in through the existing controller
+allset login dashboard codex  # Native agent sign-in for the bound project
 allset collect               # Save the default worktree's changes locally
 allset stop                  # Save results and stop the entire project VM
 allset resume                # Resume the saved VM and open the project
@@ -141,6 +150,8 @@ go vet ./...
 go build -o bin/allset ./cmd/allset
 ```
 
-These tests use temporary files and fake providers. They do not create VMs or
+These tests use temporary files and fake providers. The optional
+[container check](CONTRIBUTING.md#packaged-container-check) tests a release archive
+without the source checkout or your private controller. They do not create VMs or
 use real credentials. See [SECURITY.md](SECURITY.md) for private vulnerability
 reports and [LICENSE](LICENSE) for the MIT license.

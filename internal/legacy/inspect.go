@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/rawgroundbeef/allset/internal/config"
+	"github.com/rawgroundbeef/allset/internal/controller"
 )
 
 // InfisicalBinding contains identity metadata and a credential reference, never its contents.
@@ -30,6 +31,7 @@ type ProfileInspection struct {
 	Project             config.Project    `json:"registration"`
 	ProfilePath         string            `json:"profile_path"`
 	Owner               string            `json:"configuration_owner"`
+	RuntimeRevision     string            `json:"runtime_revision"`
 	AgentAccountProfile string            `json:"agent_account_profile,omitempty"`
 	Infisical           *InfisicalBinding `json:"infisical"`
 	Base                string            `json:"base,omitempty"`
@@ -51,7 +53,7 @@ type ProfileInspection struct {
 func (b Backend) Inspect(p config.Project) (ProfileInspection, error) {
 	view := ProfileInspection{Kind: "project-configuration-inspection", Project: p,
 		ProfilePath: filepath.Join(b.Root, "projects", p.Name, "profile.json"),
-		Owner:       "installed-box-herdr-controller", Services: []ServiceBinding{},
+		Owner:       "allset-private-profile", RuntimeRevision: controller.Revision, Services: []ServiceBinding{},
 		Omitted: []string{"credential values and account caches", "setup and service command bodies", "environment values", "runtime state", "unrecognized profile fields"}}
 	profile, err := b.CheckBinding(p)
 	if err != nil {

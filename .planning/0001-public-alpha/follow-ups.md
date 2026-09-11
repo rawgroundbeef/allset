@@ -2,9 +2,10 @@
 
 ## Bugs and incomplete workflows
 
-- A new laptop cannot open a project without the external prototype controller.
-  Extract provisioning, account bindings, allowance checks, restore readiness,
-  and repository setup into a distributable provider strategy.
+- Controller code now ships in the executable. A new laptop still needs private
+  project/account configuration; implement supported profile setup from `.allset`.
+  Provider lifecycle remains in the bundled Python compatibility runtime; future
+  Go extraction must preserve allowance, restoration and ownership checks.
 - Default SSH sessions do not guarantee agent persistence after disconnect.
   Keep explicit Herdr support and define a terminal-independent persistent path.
 - Full three-project previews and browser login, two simultaneous agent worktrees

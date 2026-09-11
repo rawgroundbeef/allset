@@ -1,5 +1,4 @@
-// Package legacy is a temporary boundary around the installed Box/Herdr controller.
-// It reads only selected metadata and leaves credential handling to that controller.
+// Package legacy adapts private prototype state to AllSet's bundled controller.
 package legacy
 
 import (
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/rawgroundbeef/allset/internal/config"
+	"github.com/rawgroundbeef/allset/internal/controller"
 	"github.com/rawgroundbeef/allset/internal/execution"
 	"github.com/rawgroundbeef/allset/internal/mcps"
 	boxapi "github.com/rawgroundbeef/allset/internal/providers/box"
@@ -170,8 +170,8 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 	if _, err := b.CheckBinding(p); err != nil {
 		return plan, err
 	}
-	controller := filepath.Join(b.Root, "controller")
-	required := filepath.Join(controller, "projects.py")
+	// This is a logical path in the bundle, never executable code from b.Root.
+	runtimeRoot := "bundled-controller"
 	switch operation {
 	case "mcp-sync", "mcp-login":
 		if p.MCPs == nil {
@@ -192,23 +192,22 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 			return plan, err
 		}
 		script := mcpBridge + "\ntry:\n sys.exit(mcp_main())\nexcept Exception as error:\n print('allset:', str(error), file=sys.stderr)\n sys.exit(1)\n"
-		plan.Args = []string{"-c", script, controller, string(payload), mcps.Runtime, operation, agent}
+		plan.Args = []string{"-c", script, runtimeRoot, string(payload), mcps.Runtime, operation, agent}
 	case "open", "resume", "login":
 		if ttl < 1 || ttl > 7200 {
 			return plan, errors.New("this migration retains the existing 1–7200 second trial limit")
 		}
-		required = filepath.Join(controller, "project_shell.py")
 		if operation == "login" {
 			if agent != "claude" && agent != "codex" && agent != "cursor" {
 				return plan, errors.New("agent must be claude, codex, or cursor")
 			}
-			plan.Args = []string{required, p.Name, "--ttl", fmt.Sprint(ttl), "--login", agent}
+			plan.Args = []string{filepath.Join(runtimeRoot, "project_shell.py"), p.Name, "--ttl", fmt.Sprint(ttl), "--login", agent}
 			plan.Interactive = true
 		} else {
 			if !terminal.Valid(attach) && attach != "terminal" {
 				return plan, errors.New("attachment must be workspace, herdr, ssh, none, or terminal")
 			}
-			plan.Args = []string{"-c", openBridge, controller, p.Name, fmt.Sprint(ttl), attach}
+			plan.Args = []string{"-c", openBridge, runtimeRoot, p.Name, fmt.Sprint(ttl), attach}
 			plan.Attachment, plan.Interactive = attach, attach != "none" && attach != "workspace"
 		}
 	case "connect", "stop":
@@ -219,11 +218,10 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 			if !terminal.Valid(attach) && attach != "terminal" {
 				return plan, errors.New("attachment must be workspace, herdr, ssh, none, or terminal")
 			}
-			required = filepath.Join(controller, "project_shell.py")
-			plan.Args = []string{"-c", openBridge, controller, p.Name, "0", attach, "connect"}
+			plan.Args = []string{"-c", openBridge, runtimeRoot, p.Name, "0", attach, "connect"}
 			plan.Attachment, plan.Interactive = attach, attach != "none" && attach != "workspace"
 		} else {
-			plan.Args = []string{filepath.Join(controller, "projects.py"), operation, p.Name}
+			plan.Args = []string{filepath.Join(runtimeRoot, "projects.py"), operation, p.Name}
 		}
 	case "collect":
 		var shell struct {
@@ -245,7 +243,7 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 		if task.Project != p.Name || task.Role != "shell" {
 			return plan, errors.New("saved shell ownership mismatch")
 		}
-		plan.Args = []string{filepath.Join(controller, "projects.py"), "collect", shell.TaskID}
+		plan.Args = []string{filepath.Join(runtimeRoot, "projects.py"), "collect", shell.TaskID}
 	default:
 		return plan, errors.New("unsupported lifecycle operation")
 	}
@@ -260,10 +258,8 @@ func (b Backend) Plan(p config.Project, operation, agent string, ttl int, attach
 		plan.Args = append(plan.Args, string(payload), mcps.Runtime)
 	}
 	if !filepath.IsAbs(plan.Executable) {
-		return plan, errors.New("Python 3 is required by the migration backend")
+		return plan, errors.New("Python 3.11+ is required by the bundled Box runtime")
 	}
-	if info, err := os.Stat(required); err != nil || !info.Mode().IsRegular() {
-		return plan, errors.New("installed migration controller is missing")
-	}
+	plan.Args = controller.Arguments(b.Root, b.Box, filepath.Join(b.Root, "bin", "herdr"), plan.Args)
 	return plan, nil
 }

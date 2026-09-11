@@ -81,9 +81,9 @@ func (s Strategy) Diagnose(ctx context.Context, p config.Project, offline bool) 
 		add("Box CLI", "pass", "Installed")
 	}
 	if _, err := s.Controller.Plan(p, "open", "", 7200, "none"); err != nil {
-		add("workspace compatibility adapter", "fail", err.Error())
+		add("bundled workspace runtime", "fail", err.Error())
 	} else {
-		add("workspace compatibility adapter", "pass", "Installed Box/Herdr controller")
+		add("bundled workspace runtime", "pass", "Controller code is included in the AllSet executable")
 	}
 	status, err := s.Controller.Status(ctx, p, offline)
 	if err != nil {

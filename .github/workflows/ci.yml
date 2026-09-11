@@ -43,3 +43,8 @@ jobs:
           bin/allset config schema --project | python3 -m json.tool > /dev/null
           bin/allset config schema | python3 -m json.tool > /dev/null
           bin/allset backends --json | python3 -m json.tool > /dev/null
+      - name: Packaged CLI in an offline container
+        if: runner.os == 'Linux'
+        run: |
+          python3 scripts/build-release.py "$RUNNER_TEMP/allset-release"
+          python3 scripts/test-container.py "$RUNNER_TEMP"/allset-release/*_linux_amd64.tar.gz

@@ -8,8 +8,8 @@ its standalone provider setup is being extracted.
 - AllSet-only command, `.allset` manifest, local registry, schemas, and help.
 - Git-boundary discovery, origin/account binding checks, non-clobbering init,
   read-only inspection, and provider-independent dispatch contracts.
-- Box status and existing-profile operations through the prototype workspace
-  controller; SSH by default and explicit remote Herdr attachment.
+- Box status and existing-profile operations through the bundled workspace
+  controller; SSH normally, native workspace handoff from a Herdr pane.
 - Native MCP configuration for Codex, Claude, and Cursor, including a pinned
   Trigger.dev preset with an isolated project login context.
 - Repository skills, MIT license, contribution/security instructions, issue forms,
@@ -17,8 +17,9 @@ its standalone provider setup is being extracted.
 
 ## Limits
 
-The Box adapter still needs a separately installed local prototype controller.
-A new manifest cannot provision a complete environment on a fresh laptop.
+Controller source now ships inside the executable. Private project/account setup
+still needs a supported creation flow; a new manifest cannot provision a complete
+environment on a fresh laptop.
 Default SSH is not a persistent session transport. Declarative setup/services,
 Infisical account binding, skill installation, multiple-project browser previews,
 and concurrent-agent app isolation are not complete.

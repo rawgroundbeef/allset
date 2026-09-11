@@ -1,4 +1,4 @@
-"""Prepare through the installed controller; attach without displacing a client."""
+"""Prepare through the bundled controller; attach without displacing a client."""
 
 import os
 import json

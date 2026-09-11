@@ -77,7 +77,7 @@ or touches authentication.
 | Location | Purpose |
 | --- | --- |
 | Repository `.allset` | Shared environment requirements; currently identity/repository/compute and native MCPs. Setup, services, agents, and skills are the next extension. |
-| Local project account profiles | Personal/work account choices, Infisical instance/org/project/principal and scoped credential references. Currently retained in the existing controller. |
+| Local project account profiles | Personal/work account choices, Infisical instance/org/project/principal and scoped credential references. Retained as private data under `~/.local/share/box-herdr`, separate from bundled controller code. |
 | Secure credential store | Authentication material, supplied separately from source and templates. |
 | Local runtime state | Actual VM IDs, SSH identities, worktrees, panes, ports, setup revisions. |
 

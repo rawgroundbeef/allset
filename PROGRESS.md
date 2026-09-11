@@ -1,5 +1,50 @@
 # AllSet progress
 
+## Bundled controller — 2026-09-10
+
+- Accepted: remove the private controller-code dependency and verify a packaged
+  executable in a clean container. Fresh worktree `fix/bundled-controller` from
+  main `90ce7c6`; existing project worktrees, services and credentials preserved.
+- The Go binary embeds an explicit 16-file Python/shell/JavaScript source
+  allowlist. It no longer loads code from the private `controller/` folder.
+  Removed developer-specific environment/template/repository/setup fallbacks.
+  Private profiles, credential references, VM records and native CLIs stay in
+  place. A supported new-project profile setup flow remains incomplete.
+- Lifecycle execution uses isolated Python and an atomically installed,
+  revision-specific cache. Existing cache contents are verified before import;
+  modified/unsafe files fail without overwrite. Inspect/doctor/status/dry-run
+  do not extract code or mutate accounts. Inspection reports the runtime revision.
+- **Local/mock:** `go test -race ./...`, `go vet ./...`, CLI build, source syntax,
+  diff whitespace and document links passed. Bundled faults cover concurrent
+  first-use, cache tampering/symlinks, import isolation, exit status, Linux argv
+  size, foreign account selection, allowance bounds and resume reconciliation.
+  Gitleaks found no leaks in the source tree.
+- **Packaged local/mock:** four macOS/Linux archives built. The Linux arm64
+  archive passed the offline Docker harness with no source checkout, host home,
+  credentials or socket mounted. Actual bundled code prepared synthetic saved
+  state, restored a fake login, preserved native MCP settings, reused one Herdr
+  workspace, and collected tracked/untracked changes without changing the index.
+  Missing/foreign bindings and stopped-machine connect failed without fallback.
+  Only simulated Box info calls occurred; no provider mutation was allowed.
+  The harness removed its container/image; shared Docker build caches remain.
+  Linux CI now runs the same packaged test on amd64.
+- **Real remote:** the built executable successfully handed off to an existing
+  running project's native Herdr workspace. No VM was created/resumed/stopped,
+  no agent was started, and no private controller code was changed.
+- **Installed:** the verified binary replaced `~/.local/bin/allset` atomically;
+  the previous binary is retained under `~/.local/share/allset/backups/`.
+- **Self-review, not independent:** correctness/ownership, code provenance,
+  credential exclusion, resource bounds, maintainability and evidence checked.
+  No blocking findings in the packaging change. Existing upstream tooling and
+  same-user host trust remain prerequisites; the runtime cache is not a sandbox.
+- **Unverified:** the container simulates Box/SSH/Herdr, tool bootstrap and
+  restoration. It does not prove real sign-ins, Infisical/MCP APIs, cloud
+  provisioning, stop/resume or interactive agent detection.
+- Next: implement a supported private project/account setup flow from declared
+  project requirements. See [decisions](.planning/0003-bundled-controller/decisions.md),
+  [UAT](.planning/0003-bundled-controller/uat.md), and
+  [scoped threats](.planning/0003-bundled-controller/threat-model.md).
+
 ## Herdr sidebar handoff — 2026-09-10
 
 - Accepted: run AllSet in a Herdr Local pane, prepare the selected project's
@@ -72,9 +117,10 @@ isolation were not tested by this source preparation work.
 
 ## Blockers and next action
 
-- Extract standalone provider preparation and implement/test npm distribution.
+- Implement supported new-project configuration and test npm distribution.
 - npm publication is pending packaging and supported maintainer sign-in.
-- Extract the prototype controller before claiming standalone onboarding.
+- Controller code is bundled; private profile creation still blocks complete
+  fresh-laptop onboarding from `.allset` alone.
 - See [.planning/0001-public-alpha/follow-ups.md](.planning/0001-public-alpha/follow-ups.md)
   for the remaining product workflows.
 

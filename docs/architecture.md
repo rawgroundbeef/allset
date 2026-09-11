@@ -20,9 +20,9 @@ already opened. AllSet resolves the project's environment and connects there.
   context never chooses the target VM, session, project, or account. There is
   no terminal field in repository or registry config.
 - `internal/execution` bounds child processes and performs terminal handoff.
-- `internal/legacy` is the temporary workspace compatibility boundary, not a
-  backend. Existing provisioning, allowance guards, auth, and workspace setup
-  remain there during extraction.
+- `internal/legacy` adapts existing private profiles/state and builds execution
+  plans; it is not a backend. `internal/controller` embeds the versioned Python
+  runtime for provisioning, allowance guards, auth, and workspace setup.
 
 The installed service registry currently contains only Box. Other compute
 services require a real strategy, not a renamed Box adapter. Missing strategies
@@ -49,23 +49,42 @@ maps to Box; v2 terminal fields are accepted only as historical data and discard
 New manifests and v3 registries reject terminal fields. Existing accounts, VM
 pointers, authentication caches, and project profiles are not rewritten.
 
+## Bundled runtime
+
+The Go executable contains the source allowlist in `internal/controller/runtime`.
+It invokes Python in isolated mode and atomically installs the embedded archive
+under `$XDG_CACHE_HOME/allset/controller/<sha256>` (default `~/.cache`). Each
+execution verifies file names, bytes, ownership and private permissions before
+importing code. Unexpected files, modified files and symlink paths fail without
+overwriting them. This protects against accidental cache substitution; it is not
+a sandbox against another process already controlling the same user account.
+
+Planning, status, doctor and inspection never extract code. The Go plan supplies
+the state directory and native Box/Herdr paths explicitly; inherited internal
+variables cannot redirect them. Project data and credentials are not embedded.
+The existing `~/.local/share/box-herdr` remains the private state location, but
+its `controller/` directory is no longer an executable dependency of AllSet.
+Other separately installed wrappers may still use that directory; no migration
+or deletion is performed. Python 3.11+ and native provider/connection tools remain
+prerequisites. Remote tool bootstrap currently targets Linux x86_64 Box images.
+
 ## Remaining extraction
 
 The repository file currently declares project bindings, not complete workspace
-requirements. Box preparation still uses the separately installed controller.
-The updated controller accepts an explicit session-preparation flag: normal SSH,
+requirements. Box preparation uses the bundled compatibility controller.
+The controller accepts an explicit session-preparation flag: normal SSH,
 prepare-only, and agent login use tooling and repository setup without Herdr.
 Herdr transports, including auto from a Herdr pane, install its tooling/hooks,
-register the machine, and prepare a workspace. Older controller installations need the corresponding update;
-the private controller is still not distributed with this source repository.
+register the machine, and prepare a workspace. The binary and controller now
+upgrade together; there is no separate controller-code installation step.
 
 Private account bindings can select Box's GitHub integration or an explicit existing
 GitHub CLI account. The latter uses the native local account store, validates the
 account and repository, stages the credential in private remote RAM, and supplies
 native `GH_TOKEN` through a project-owned gh dispatcher. It does not copy the
 laptop's entire configuration directory, switch its active account, or narrow the
-existing token's permissions. This adapter remains private pending extraction;
-these fields are not part of the shared `.allset` manifest.
+existing token's permissions. This adapter is bundled, but its private account
+bindings are not part of the shared `.allset` manifest.
 
 SSH, PTY, and workspace handoffs validate the saved checkout's project, machine,
 role, and absolute directory. Auth and declared MCP preparation remain separate
@@ -85,7 +104,7 @@ override, the existing controller's dedicated catalog remains the fallback.
 The CLI exits without nesting another client, sending pane input, or starting
 an agent. Herdr 0.9.0 does not expose automatic machine selection for an existing
 client. Because the command returns, its attached credential-cache monitor does
-not continue running; native sign-in and the existing controller remain the
+not continue running; native sign-in and the bundled controller remain the
 account owners. Remote refresh durability across VM stop remains a limitation.
 
 A new manifest cannot yet bootstrap a new project's full local provider profile.
@@ -104,5 +123,11 @@ Box info method has moved so far. Connect never resumes a stopped machine.
 Local tests cover discovery/root boundaries, init without credentials, cancellation,
 noninteractive/dry-run guarantees, credential-bearing origins, malformed/foreign
 manifests, old-format migration, unsupported strategies, and current-terminal
-routing. Connection adapter tests use subprocess stubs. Full new-project provisioning, three apps/previews, and parallel
-agent worktree isolation remain outstanding. See PROGRESS.md for current evidence.
+routing. Runtime tests execute the actual embedded Python source against synthetic
+state and failure responses. The optional packaged-container check runs a release
+archive offline, without the repository or host home, using simulated Box, SSH and
+Herdr boundaries. It exercises actual repository checks, synthetic credential
+restore and native MCP file projection. It does not prove cloud provisioning,
+real sign-ins, tool installation or filesystem restoration. Full new-project
+provisioning, three apps/previews, and parallel agent worktree isolation remain
+outstanding. See PROGRESS.md for current evidence.
