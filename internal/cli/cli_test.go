@@ -56,6 +56,11 @@ func appFixture(t *testing.T) (App, *bytes.Buffer, *[]execution.Plan) {
 func TestAliasAndRepoInferenceDispatchWithoutPrompt(t *testing.T) {
 	for _, args := range [][]string{{"joy"}, {"."}, {}, {"open", "dashboard"}, {"resume", "dashboard"}} {
 		a, out, plans := appFixture(t)
+		if err := config.WriteProject(filepath.Join(a.CurrentDir, config.ProjectFilename), config.Manifest{
+			Version: 1, Project: config.Project{Name: "dashboard", Repository: "acme/dashboard", Backend: "box"},
+		}); err != nil {
+			t.Fatal(err)
+		}
 		if code := a.Run(context.Background(), args); code != 0 {
 			t.Fatal(args, code, out.String())
 		}

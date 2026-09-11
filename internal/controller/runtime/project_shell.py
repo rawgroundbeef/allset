@@ -14,6 +14,7 @@ import uuid
 import projects
 import agent_auth
 import repository_access
+import progress
 
 c = projects.c
 
@@ -61,6 +62,7 @@ def terminal(meta, profile):
 
 def prepare_repository(meta, profile, *, create_terminal=True):
     """Create the project shell's checkout once, preserving every existing branch and user pane."""
+    progress.stage('repository', 'Preparing your project', 'Checking the saved checkout')
     with projects.project_lock(profile['name']):
         record = projects.PROJECTS / profile['name'] / 'shell.json'
         if record.exists():
@@ -80,7 +82,7 @@ def prepare_repository(meta, profile, *, create_terminal=True):
         checkout['project_profile'] = profile
         checkout['session_interface'] = 'herdr' if create_terminal else 'ssh'
         if checkout['phase'] != 'shell-ready':
-            print('Preparing ' + profile['name'] + ' repository and dependencies for the first session...', flush=True)
+            progress.stage('repository', 'Preparing your project', 'Setting up the first checkout and dependencies')
             directory = c.STATE / 'tasks' / checkout['task_id']
             bundle = directory / 'source.bundle'
             if not checkout.get('base_sha'):
@@ -89,9 +91,9 @@ def prepare_repository(meta, profile, *, create_terminal=True):
             c.configure_task(checkout, bundle, with_agent=False)
         access = repository_access.configure(c.remote, meta, checkout['cwd'], checkout['repository'], profile.get('github'))
         if access['github_verified']:
-            print('GitHub access verified: ' + access['repository'], flush=True)
+            progress.note('GitHub access verified: ' + access['repository'])
         else:
-            print('GitHub access is not configured for ' + profile['name'] + '.', flush=True)
+            progress.note('GitHub access is not configured for ' + profile['name'] + '.')
         if create_terminal:
             label = profile['name'] + ' / project'
             workspaces = c.rh(meta, 'workspace', 'list')['workspaces']
@@ -100,7 +102,8 @@ def prepare_repository(meta, profile, *, create_terminal=True):
             pane = terminal(meta, profile)
             c.rh(meta, 'workspace', 'focus', pane['workspace_id'])
         branch = c.remote(meta, shlex.join(['git', '-C', checkout['cwd'], 'branch', '--show-current'])).strip()
-        print('Repository: ' + checkout['cwd'] + '\nBranch: ' + (branch or '(detached HEAD)'), flush=True)
+        progress.note('Repository: ' + checkout['cwd'])
+        progress.note('Branch: ' + (branch or '(detached HEAD)'))
 
 
 def shell(name, ttl=7200, *, login_provider=None):

@@ -24,6 +24,7 @@ import tarfile
 import time
 import uuid
 import repository_access
+import progress
 
 ROOT = Path(__file__).resolve().parent
 STATE = Path(os.environ['_ALLSET_STATE_ROOT'])
@@ -274,7 +275,8 @@ def wait_box(meta, *, stopped=False, timeout=600):
             raise RuntimeError('Box did not start: ' + str(info.get('error') or info['state']) +
                                '. The saved machine has not been replaced.')
         if time.monotonic() - last_report >= 30:
-            print('Box ' + meta['machine_id'] + ': ' + info['state'] + '; waiting...', flush=True)
+            progress.stage('machine', 'Stopping your machine' if stopped else 'Waiting for your machine',
+                           'Waiting for Box to finish stopping' if stopped else 'Box is preparing the environment')
             last_report = time.monotonic()
         time.sleep(3)
     raise TimeoutError('Box did not reach the requested state; its ID is saved.')
@@ -303,14 +305,14 @@ def restored_host_key(meta, timeout=900):
                 if elapsed >= timeout:
                     raise TimeoutError('Box has not finished preparing its environment; no host key was replaced or agent started.') from None
                 if elapsed - last_report >= 30:
-                    print(f'Box is preparing its environment ({int(elapsed)}s elapsed); waiting for authenticated SSH access...', flush=True)
+                    progress.stage('connection', 'Connecting securely', 'Your machine is still preparing access')
                     last_report = elapsed
                 time.sleep(min(15, max(0, timeout - elapsed)))
                 continue
             transport_failures += 1
             if not transient_box_error(error) or transport_failures == 3:
                 raise
-            print('Box is running; its command API is still warming up. Retrying host verification...', flush=True)
+            progress.stage('connection', 'Connecting securely', 'Your machine is running; waiting to verify access')
             time.sleep(2 ** transport_failures)
 
 
@@ -334,6 +336,7 @@ def ssh_destination(info):
 def refresh_ssh(meta):
     """Refresh only the owned alias and authenticate changed host keys through the Box API."""
     info = wait_box(meta)
+    progress.stage('connection', 'Connecting securely')
     address, port = ssh_destination(info)
     # A live pinned connection already proves access. Avoid repeating Box's key
     # registration endpoint on every terminal open; changed hosts still use it.
@@ -348,9 +351,9 @@ def refresh_ssh(meta):
     # A resumed project already has its registered user key. Only first setup
     # needs Box's registration flow; authenticate its new host key via box exec.
     if not meta.get('ssh_alias'):
-        print('Registering SSH access with Box...', flush=True)
+        progress.stage('connection', 'Connecting securely', 'Setting up SSH access')
         command([BOX, '--no-update', 'ssh', meta['machine_id'], 'true'], timeout=90)
-    print('Verifying the resumed machine identity...', flush=True)
+    progress.stage('connection', 'Connecting securely', 'Verifying your machine’s identity')
     public_key = restored_host_key(meta)
     if len(public_key) < 2 or public_key[0] != 'ssh-ed25519':
         raise ValueError('Expected an Ed25519 host key from authenticated Box command API')
@@ -388,7 +391,7 @@ def refresh_ssh(meta):
     save(meta)
     result = command(ssh_args(meta) + ['true'], timeout=30, check=False)
     if result.returncode and 'Permission denied (publickey)' in result.stderr:
-        print('Box requires SSH key registration again; registering the existing key...', flush=True)
+        progress.stage('connection', 'Connecting securely', 'Restoring access with your existing SSH key')
         command([BOX, '--no-update', 'ssh', meta['machine_id'], 'true'], timeout=90)
         command(ssh_args(meta) + ['true'], timeout=30)
     elif result.returncode:
@@ -465,7 +468,7 @@ def register(meta, *, prepare=False):
             # Herdr's native five-second startup budget can expire while a
             # restored session is still opening its panes. Wait for that server;
             # never restart it or discard the restored session.
-            print('Herdr is restoring its panes; waiting for the existing server...', flush=True)
+            progress.stage('sessions', 'Reconnecting Herdr', 'Waiting for your saved panes to return')
             for _ in range(30):
                 ready = remote(meta, 'test -S /home/user/.config/herdr/sessions/' + SESSION +
                                '/herdr-client.sock && echo ready || true')
@@ -505,6 +508,7 @@ def source_checkout(repo, base, directory):
 def configure_task(meta, bundle, *, with_agent=True):
     """Prepare a unique worktree; shell-only callers stop after dependency setup without an agent."""
     refresh_ssh(meta)
+    progress.stage('repository', 'Preparing your project', 'Setting up the checkout')
     state = '/home/user/.box-herdr/tasks/' + meta['task_id']
     base_repo = meta.get('base_repo')
     if not base_repo or not Path(base_repo).is_absolute():
@@ -575,6 +579,7 @@ def configure_task(meta, bundle, *, with_agent=True):
 
 def prepare_task(meta):
     """Await this setup run, with matching source and token, before any agent is started."""
+    progress.stage('repository', 'Preparing your project', 'Installing project dependencies')
     state = meta['remote_state']
     for name in ('bootstrap.sh', 'prepare.sh', 'worker.py'):
         write_remote(meta, state + '/' + name, (ROOT / name).read_text())

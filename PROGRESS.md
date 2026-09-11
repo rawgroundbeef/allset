@@ -1,6 +1,41 @@
 # AllSet progress
 
-## Bare project setup — 2026-09-11
+## Setup review and startup display — 2026-09-11
+
+- Corrected the previous first-run UX: its tests proved silent config restoration
+  followed by opening, which did not meet the requested guided setup. Interactive
+  `allset` without `.allset` now reviews saved settings and returns without any
+  create/resume/connect operation. The choices are terminal configuration,
+  a copyable prompt for the user's coding agent, or cancel. `allset init` can
+  replay the review with an existing file; deletion is unnecessary.
+- Startup now reports actual preparation phases with a TTY spinner, elapsed time,
+  completed rows, and a checkout/account summary. Restoration waits show fetched
+  bytes when available, without estimating percentages. Account labels retain
+  the distinction between a saved login and verified access. MCP protocol JSON
+  is suppressed during opening; curated configuration errors remain visible.
+- The display ends before native SSH/Herdr handoff and on failure/interruption.
+  Redirected output and `TERM=dumb` remain plain; `NO_COLOR` disables color.
+  The display does not own provider polling or change resume/restore decisions.
+- **Local/mock:** Go race suite, vet and build passed. CLI tests cover replay,
+  saved registrations, cancellation/EOF, agent handoff and configuration-only
+  first runs. Real PTY tests cover animation during waits and cleanup on success,
+  error and interruption; bridge tests assert no redraw worker reaches native
+  handoff. Review was local, not independent; the stop-wait narration was
+  corrected during review. No remaining blocking finding in this scope.
+- **Packaged local/mock:** offline Linux arm64 container passed missing-config
+  review/cancel/agent handoff with zero provider/cache/auth changes, followed by
+  a separate open. The executable animated in a PTY and used plain redirected
+  output. Existing workspace reuse, native MCP projection, synthetic account
+  restore, collection and ownership failures still passed. Docker resources
+  were cleaned up. See [UX acceptance](.planning/0004-setup-ux/uat.md).
+- **Real remote:** only a read-only Memeputer status check during investigation;
+  no VM was created/resumed/stopped to test this change. Live cloud hydration,
+  real sign-ins and visual acceptance in the user's Herdr pane are unverified.
+- Next: user feedback on setup and startup in the normal terminal. Complete
+  private provider/account onboarding remains a separate gap; the agent option
+  supplies a prompt and does not launch an agent automatically.
+
+## Bare project setup — 2026-09-11 (superseded UX)
 
 - User requirement: running `allset` without `.allset` starts setup automatically,
   with a guided walkthrough that can be used with the preferred coding agent.

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,6 +97,11 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 			return p, errors.New("project config already exists with a different binding; it was not replaced")
 		}
 		fmt.Fprintln(a.Out, "Using", location.ManifestPath)
+		if !*accept {
+			if _, err := a.reviewSetup(p, true); err != nil {
+				return p, err
+			}
+		}
 		return p, nil
 	}
 	repo, err := a.repository(ctx, location.Root)
@@ -110,6 +114,13 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 	}
 	fmt.Fprintf(a.Out, "Project setup: %s\n", repo)
 	fmt.Fprintln(a.Out, "Shared project settings go in .allset. Account choices and credentials stay private.")
+	var reader *bufio.Reader
+	if !*accept {
+		reader, err = a.reviewSetup(p, false)
+		if err != nil {
+			return p, err
+		}
+	}
 	if known == nil {
 		if (*name != "" && p.Name != *name) || (*backend != "" && p.Backend != *backend) {
 			return p, errors.New("requested project identity conflicts with this repository's saved environment")
@@ -132,29 +143,12 @@ func (a App) initialize(ctx context.Context, f config.File, args []string) (conf
 			provider = a.Strategies.Names()[0]
 		}
 		if !*accept {
-			if !a.Interactive || a.In == nil {
-				return p, errors.New("initial setup needs an interactive terminal; an agent can use allset init --name NAME --backend SERVICE --yes")
-			}
 			fmt.Fprintln(a.Out, "Press Enter to accept a suggested value, or Ctrl+C to cancel.")
-			fmt.Fprintln(a.Out, "For help from your coding agent, ask it to run allset config guide in this repository.")
-			reader := bufio.NewReader(io.LimitReader(a.In, 8192))
-			ask := func(label, fallback string) (string, error) {
-				fmt.Fprintf(a.Out, "%s [%s]: ", label, fallback)
-				answer, err := reader.ReadString('\n')
-				if err != nil {
-					return "", errors.New("setup cancelled; no configuration or VM created")
-				}
-				answer = strings.TrimSpace(answer)
-				if answer == "" {
-					answer = fallback
-				}
-				return answer, nil
-			}
-			inferred, err = ask("1/2 Project name", inferred)
+			inferred, err = setupAnswer(reader, a.Out, "1/2 Project name", inferred)
 			if err != nil {
 				return p, err
 			}
-			provider, err = ask("2/2 Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
+			provider, err = setupAnswer(reader, a.Out, "2/2 Compute provider ("+strings.Join(a.Strategies.Names(), ", ")+")", provider)
 			if err != nil {
 				return p, err
 			}
@@ -183,6 +177,9 @@ func (a App) initCommand(ctx context.Context, args []string) int {
 		return a.fail(err)
 	}
 	p, err := a.initialize(ctx, f, args)
+	if errors.Is(err, errSetupHandoff) {
+		return 0
+	}
 	if err != nil {
 		return a.fail(err)
 	}

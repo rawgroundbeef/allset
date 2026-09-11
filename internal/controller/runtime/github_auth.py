@@ -83,7 +83,8 @@ def stage(controller, meta, profile):
                                 data=json.dumps(request), timeout=150, check=False)
     if result.returncode:
         raise ValueError('Project GitHub credential setup failed; remote output withheld. Reconcile this same project before retrying.')
-    print('GitHub account: ' + binding['account_login'] + ' (' + profile['name'] + ')', flush=True)
+    import progress
+    progress.note('GitHub account: ' + binding['account_login'] + ' (' + profile['name'] + ')')
 
 
 def private_directory(path):

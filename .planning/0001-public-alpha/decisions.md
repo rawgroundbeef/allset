@@ -44,3 +44,18 @@ trusted-publisher bootstrap. See [follow-ups](follow-ups.md).
   product question; no automatic agent-launch behavior is inferred.
 - Full account/provider setup remains incomplete. The walkthrough must say so
   when it saves project configuration without a usable environment binding.
+
+## Setup review and startup feedback — 2026-09-11
+
+- Correction from the user's first-run transcript: restoring saved settings
+  silently and then opening a VM is not the requested walkthrough. Missing-file
+  setup must show a review choice and return before the environment operation.
+  `allset init` replays review without requiring deletion of existing config.
+- Terminal configuration and an agent prompt are both offered. The agent prompt
+  leaves configuration and VMs unchanged; it starts no agent. Private provider
+  and account onboarding is still incomplete and must be described accurately.
+- User request: startup should feel like a product, with a loading indicator and
+  plain-language narration. Display real phases, wait reasons and elapsed time;
+  do not fabricate percentages or imply that saved credentials passed live auth.
+- Animation owns only output and ends before SSH/Herdr handoff. Plain output,
+  interruption, existing work and lifecycle recovery remain supported.

@@ -41,6 +41,7 @@ func TestExistingManifestOpensAndInitPreservesContents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, args := range [][]string{{"init"}, {"config", "show", "--project"}, nil} {
+		a.In = strings.NewReader("1\n")
 		if code := a.Run(context.Background(), args); code != 0 {
 			t.Fatal(args, code, out.String())
 		}
@@ -73,6 +74,7 @@ func TestBrokenOrForeignManifestNeverFallsBackToRegisteredProject(t *testing.T) 
 func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) {
 	a, out, plans := appFixture(t)
 	before, _ := os.ReadFile(a.ConfigPath)
+	a.In = strings.NewReader("1\n")
 	if code := a.Run(context.Background(), []string{"init"}); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -80,6 +82,7 @@ func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) 
 	if err != nil || m.Name != "dashboard" || m.Backend != "box" {
 		t.Fatal(m, err)
 	}
+	a.In = strings.NewReader("1\n")
 	if code := a.Run(context.Background(), []string{"init"}); code != 0 {
 		t.Fatal(code, out.String())
 	}
@@ -89,7 +92,7 @@ func TestInitReusesSavedBindingWithoutTouchingAccountsOrLaunching(t *testing.T) 
 	}
 }
 
-func TestBareOpenCreatesMissingManifestFromSavedBindingAndContinues(t *testing.T) {
+func TestBareSetupReviewsSavedBindingWithoutOpeningEnvironment(t *testing.T) {
 	for _, args := range [][]string{nil, {"."}, {"open"}, {"open", "."}} {
 		a, out, plans := appFixture(t)
 		root := a.CurrentDir
@@ -105,7 +108,7 @@ func TestBareOpenCreatesMissingManifestFromSavedBindingAndContinues(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		input := strings.NewReader("must not be consumed\n")
+		input := strings.NewReader("1\n")
 		a.In = input
 		if code := a.Run(context.Background(), args); code != 0 {
 			t.Fatal(args, code, out.String())
@@ -115,8 +118,8 @@ func TestBareOpenCreatesMissingManifestFromSavedBindingAndContinues(t *testing.T
 			manifest.Backend != registry.Projects[0].Backend || strings.Join(manifest.Aliases, ",") != "joy" {
 			t.Fatal("saved project binding was not preserved", manifest, err)
 		}
-		if len(*plans) != 1 || (*plans)[0].Project != manifest.Name || input.Len() != len("must not be consumed\n") {
-			t.Fatal("open did not reuse its saved binding without questions")
+		if len(*plans) != 0 || input.Len() != 0 || !strings.Contains(out.String(), "How would you like to continue?") {
+			t.Fatal("setup skipped review or continued to a VM lifecycle operation")
 		}
 		after, _ := os.ReadFile(a.ConfigPath)
 		if !bytes.Equal(before, after) || strings.Contains(out.String(), "SECRET") {
@@ -124,6 +127,52 @@ func TestBareOpenCreatesMissingManifestFromSavedBindingAndContinues(t *testing.T
 		}
 		if _, err := os.Stat(filepath.Join(a.CurrentDir, config.ProjectFilename)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatal("config was not bounded to the project root")
+		}
+	}
+}
+
+func TestSetupCancellationAndAgentHandoffLeaveExistingStateUntouched(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		for _, answer := range []string{"", "3\n", "2\n", "invalid\n3\n"} {
+			a, out, plans := appFixture(t)
+			path := filepath.Join(a.CurrentDir, config.ProjectFilename)
+			body := []byte(`{"version":1,"name":"dashboard","repository":"acme/dashboard","backend":"box"}`)
+			if existing {
+				if err := os.WriteFile(path, body, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(a.ConfigPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			a.In = strings.NewReader(answer)
+			var args []string
+			if existing {
+				args = []string{"init"}
+			}
+			want := 1
+			if answer == "2\n" {
+				want = 0
+			}
+			if code := a.Run(context.Background(), args); code != want || len(*plans) != 0 {
+				t.Fatal(code, out.String(), "setup dispatched an environment operation")
+			}
+			after, err := os.ReadFile(a.ConfigPath)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("registry changed", err)
+			}
+			manifest, err := os.ReadFile(path)
+			if existing {
+				if err != nil || !bytes.Equal(body, manifest) {
+					t.Fatal("existing config changed", err)
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				t.Fatal("setup wrote unapproved config", err)
+			}
+			if answer == "2\n" && (!strings.Contains(out.String(), "allset config guide") || !strings.Contains(out.String(), "preferred coding agent")) {
+				t.Fatal("missing agent handoff", out.String())
+			}
 		}
 	}
 }
@@ -158,8 +207,8 @@ func TestMissingConfigEntersSetupAndReportsUnimplementedProviderPreparation(t *t
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/project.git"), nil
 	}
-	a.In = strings.NewReader("\n\n")
-	if code := a.Run(context.Background(), nil); code != 1 {
+	a.In = strings.NewReader("1\n\n\n")
+	if code := a.Run(context.Background(), nil); code != 2 {
 		t.Fatal(code, out.String())
 	}
 	m, err := config.LoadProject(filepath.Join(a.CurrentDir, config.ProjectFilename))
@@ -222,19 +271,19 @@ func TestInitDoesNotEchoCredentialBearingOrigin(t *testing.T) {
 	}
 }
 
-func TestFreshConfigContinuesToInstalledStrategyAndReopenSkipsQuestions(t *testing.T) {
+func TestFreshSetupReturnsBeforeOpeningAndNextRunUsesSavedConfiguration(t *testing.T) {
 	a, out, plans := appFixture(t)
 	s := &testService{}
 	a.Strategies = strategy.Registry{"test-service": s}
 	a.Capture = func(context.Context, string, ...string) ([]byte, error) {
 		return []byte("git@github.com:new/repo.git"), nil
 	}
-	a.In = strings.NewReader("demo\n\n")
+	a.In = strings.NewReader("1\ndemo\n\n")
 	if code := a.Run(context.Background(), nil); code != 0 {
 		t.Fatal(code, out.String())
 	}
-	if len(*plans) != 1 || (*plans)[0].Project != "demo" || (*plans)[0].Backend != "test-service" {
-		t.Fatal(*plans)
+	if len(*plans) != 0 || strings.Join(s.calls, ",") != "validate" {
+		t.Fatal("setup planned or executed an environment operation", s.calls)
 	}
 	before, err := os.ReadFile(filepath.Join(a.CurrentDir, config.ProjectFilename))
 	if err != nil {
@@ -246,7 +295,8 @@ func TestFreshConfigContinuesToInstalledStrategyAndReopenSkipsQuestions(t *testi
 		t.Fatal(code, out.String())
 	}
 	after, _ := os.ReadFile(filepath.Join(a.CurrentDir, config.ProjectFilename))
-	if !bytes.Equal(before, after) || len(*plans) != 2 || strings.Contains(out.String(), "Compute provider") {
+	if !bytes.Equal(before, after) || len(*plans) != 1 || (*plans)[0].Project != "demo" ||
+		(*plans)[0].Backend != "test-service" || strings.Contains(out.String(), "Compute provider") {
 		t.Fatal("reopen repeated setup")
 	}
 	*plans = nil

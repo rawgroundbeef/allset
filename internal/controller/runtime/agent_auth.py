@@ -172,6 +172,7 @@ def require_login(controller, profile, provider):
 
 def print_accounts(controller, profile):
     """Show saved account bindings without claiming that cached tokens passed a live request."""
+    import progress
     binding = config(controller, profile)
     if not binding:
         return
@@ -183,7 +184,7 @@ def print_accounts(controller, profile):
         state = 'saved login' if has_login(provider, cached.get('contents')) else 'sign-in needed'
         if cached.get('logged_out') or cached.get('needs_login'):
             state = 'sign-in needed'
-        print(provider + ': ' + label + ' — ' + state, flush=True)
+        progress.note(provider + ': ' + label + ' — ' + state)
 
 
 def login(controller, meta, profile, provider):

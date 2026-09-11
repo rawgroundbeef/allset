@@ -52,16 +52,25 @@ allset --dry-run --json
 
 Run `allset` in the project for the guided configuration walkthrough. When
 `.allset` is missing, interactive open starts setup: it infers the Git origin,
-reuses saved project settings when available, or asks for the project name and
-compute provider. It saves `.allset` and continues opening when the environment
-is configured. Later runs use that file without repeating setup.
+shows saved project settings for review, or asks for the project name and
+compute provider. Choose terminal setup, guidance for your preferred coding
+agent, or cancel. Setup returns to the prompt without starting or resuming a VM.
+Run `allset` again to open the configured environment.
 
 To work with your preferred coding agent, ask it to run `allset config guide`
 in this repository and walk through the supported configuration with you.
-`allset init` remains an explicit configuration-only command for agents and
-scripts. It never replaces an existing file or creates a VM. The current
+`allset init` reopens this review even when `.allset` already exists; there is
+no need to delete it. Agents and scripts can use `allset init --yes` to accept
+the configuration without prompts. It never replaces an existing file or
+creates a VM. The current
 walkthrough covers project configuration; missing provider/account setup is
 still reported as incomplete.
+
+Opening a workspace shows live preparation phases with a spinner and elapsed
+time. File restoration and connection waits explain what is happening; the
+finished view summarizes the checkout and saved account bindings. The display
+ends before SSH or Herdr takes over. Redirected output and `TERM=dumb` use plain
+lines; `NO_COLOR` disables color. Saved logins are labeled as saved, not verified.
 
 ```json
 {

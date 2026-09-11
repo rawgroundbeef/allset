@@ -127,7 +127,7 @@ func TestEmbeddedAssetsExcludePrivateProfilesAndCompile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(reader.File) != 16 {
+	if len(reader.File) != 17 {
 		t.Fatal("Review the runtime asset allowlist before adding files")
 	}
 	for _, file := range reader.File {

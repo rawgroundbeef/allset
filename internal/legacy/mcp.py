@@ -7,15 +7,24 @@ import subprocess
 import sys
 
 
-def sync_mcps(projects, owner, payload, runtime):
+def sync_mcps(projects, owner, payload, runtime, *, quiet=False):
     if payload.get('mcps') is None:
         return
     request = {'operation': 'sync', 'project': payload['name'],
                'repository': payload['repository'], 'mcps': payload['mcps']}
     argv = projects.c.ssh_args(owner) + [shlex.join(['python3', '-c', runtime, json.dumps(request)])]
-    result = subprocess.run(argv, timeout=60)
+    result = subprocess.run(argv, timeout=60, **({"capture_output": True, "text": True} if quiet else {}))
     if result.returncode:
-        raise RuntimeError('MCP sync failed; existing agent sessions were left running')
+        message = 'MCP sync failed; existing agent sessions were left running'
+        if quiet:
+            # The shipped runtime curates these diagnostics and withholds parser
+            # exception bodies, which can include credentials. Do not echo raw
+            # transport output or the successful JSON protocol into startup.
+            for line in result.stderr.splitlines():
+                if line.startswith('allset mcp: '):
+                    message += '. ' + ''.join(ch for ch in line[12:600] if ch.isprintable())
+                    break
+        raise RuntimeError(message)
 
 
 def mcp_main():

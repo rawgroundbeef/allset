@@ -67,6 +67,7 @@ def verify_sandbox_access(controller, meta, profile):
 
 def configure(controller, meta, profile):
     """Install the dispatcher and supply this project's valid credential in RAM on every open."""
+    import progress
     if not profile.get('infisical'):
         return
     directory = '/home/user/.box-herdr/infisical'
@@ -79,17 +80,17 @@ def configure(controller, meta, profile):
     controller.remote(meta, shlex.join(['python3', '-c', script]))
     logged_out = controller.remote(meta, 'test ! -f ' + directory + '/logged-out && echo ready || echo logged-out').strip()
     if logged_out == 'logged-out':
-        print('Infisical: explicitly logged out for ' + profile['name'] + '; use box-herdr auth-login ' + profile['name'] + '.', flush=True)
+        progress.note('Infisical: explicitly logged out for ' + profile['name'] + '; use box-herdr auth-login ' + profile['name'] + '.')
         return
     try:
         auth = credential(profile)
     except (ValueError, OSError):
-        print('Infisical: ' + profile['name'] + ' needs credential refresh; use box-herdr auth-login ' + profile['name'] + '.', flush=True)
+        progress.note('Infisical: ' + profile['name'] + ' needs credential refresh; use box-herdr auth-login ' + profile['name'] + '.')
         return
     stage(controller, meta, profile, auth)
     verify_sandbox_access(controller, meta, profile)
     label = value['infisical'].get('user_email', value['infisical']['principal_id'])
-    print('Infisical profile: ' + profile['name'] + ' → ' + label, flush=True)
+    progress.note('Infisical profile: ' + profile['name'] + ' → ' + label)
 
 
 def install(profile):

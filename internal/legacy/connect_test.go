@@ -28,6 +28,7 @@ func TestConnectUsesSelectedTerminalWithoutResumeOrRepositoryPreparation(t *test
 	} {
 		t.Run(tc.mode+"-"+tc.state+"-"+tc.owner, func(t *testing.T) {
 			root := t.TempDir()
+			installProgressFixture(t, root)
 			put(t, root, "profiles/dashboard/shell.json", map[string]string{"task_id": "shell-dashboard"})
 			files := map[string]string{
 				"projects.py": `import os,sys,contextlib
@@ -83,6 +84,8 @@ def run(argv,env,stdin,capture_output,text,timeout):
  assert argv[1:]==['machine','list','--json']
  return Result()
 def call(argv,env):
+ import progress,threading
+ assert not progress.active() and not any(t.name=="allset-progress" for t in threading.enumerate())
  assert env==({'MARKER':'preserved'} if os.environ['FAKE_MODE']=='herdr' else dict(os.environ))
  assert '--takeover' not in argv
  mode=os.environ['FAKE_MODE']
@@ -126,6 +129,7 @@ func TestOpenAppliesMCPsAfterPreparationWithoutAttaching(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := t.TempDir()
+	installProgressFixture(t, root)
 	files := map[string]string{
 		"projects.py": `import sys
 class C:
@@ -147,7 +151,8 @@ def wait_project_filesystem(owner,timeout): print('filesystem-ready')
 `,
 		"subprocess.py": `import json,shlex
 class Result: returncode=0
-def run(argv,timeout):
+def run(argv,timeout,capture_output,text):
+ assert capture_output is True and text is True
  assert argv[:2]==['ssh','project-dashboard']
  command=shlex.split(argv[-1])
  assert command[:3]==['python3','-c','runtime-placeholder']
@@ -168,7 +173,7 @@ def run(argv,timeout):
 	if err != nil {
 		t.Fatal(err, string(out))
 	}
-	if !strings.Contains(string(out), "prepared\nrepository-ready\nfilesystem-ready\nmcp-applied\n") {
+	if !strings.Contains(string(out), "prepared\nrepository-ready\nfilesystem-ready\nPreparing your MCP settings\nmcp-applied\n") {
 		t.Fatal(string(out))
 	}
 }

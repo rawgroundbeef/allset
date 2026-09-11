@@ -38,8 +38,11 @@ The nearest .allset must match origin and any saved project binding.
 Malformed documents, unsupported fields, symlinks, and identity conflicts fail;
 they never fall through into inference or first-time provisioning.
 
-Absent a manifest, interactive current-project open runs init, reusing the saved
-registry binding when present. Named shortcuts and noninteractive calls keep
+Absent a manifest, interactive current-project open enters configuration review
+and returns without running an environment operation. Saved registry bindings
+are displayed for an explicit choice before creating the file. The review also
+offers a configuration-only prompt for the user’s coding agent and cancellation.
+Explicit `init` reopens the review for an existing manifest without overwriting it. Named shortcuts and noninteractive calls keep
 registry inference for continuity. An unknown repository enters init only during
 interactive open. Init creates a
 strict file atomically, without clobbering files or copying accounts. Dry runs,
@@ -79,6 +82,15 @@ prepare-only, and agent login use tooling and repository setup without Herdr.
 Herdr transports, including auto from a Herdr pane, install its tooling/hooks,
 register the machine, and prepare a workspace. The binary and controller now
 upgrade together; there is no separate controller-code installation step.
+
+The bundled preparation runtime reports explicit phases to a scoped progress
+display. TTY output animates one current row, with completed rows and a final
+checkout/account summary; redirected output and `TERM=dumb` use plain lines.
+`NO_COLOR` disables color. The display stops and joins its redraw worker before
+native terminal handoff, and on exceptions/cancellation. It does not estimate
+percentages, poll providers itself, or change lifecycle decisions. Native MCP
+sync keeps its standalone output; opening summarizes that result instead of
+printing its JSON protocol. Saved credentials are not labeled as live sign-ins.
 
 Private account bindings can select Box's GitHub integration or an explicit existing
 GitHub CLI account. The latter uses the native local account store, validates the

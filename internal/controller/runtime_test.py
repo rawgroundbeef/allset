@@ -1,6 +1,12 @@
 """Synthetic checks against the actual shipped controller, without external CLIs."""
 import contextlib
 import json
+import io
+import os
+import pty
+import select
+import time
+import progress
 from pathlib import Path
 import subprocess
 import sys
@@ -17,6 +23,66 @@ c = projects.c
 
 
 class RuntimeTests(unittest.TestCase):
+    def test_progress_plain_output_and_failure_cleanup(self):
+        for error in (None, RuntimeError('fixture failure'), KeyboardInterrupt()):
+            output = io.StringIO()
+            try:
+                with progress.Progress(output) as display:
+                    progress.stage('files', 'Restoring your files', 'Waiting for the saved filesystem')
+                    progress.note('Codex: sign-in needed')
+                    if error is not None:
+                        raise error
+            except (RuntimeError, KeyboardInterrupt):
+                pass
+            text = output.getvalue()
+            self.assertNotIn('\x1b', text)
+            self.assertIn('Restoring your files', text)
+            self.assertIn('Codex: sign-in needed', text)
+            self.assertEqual('Workspace prepared' in text, error is None)
+            self.assertEqual('Stopped waiting' in text, isinstance(error, KeyboardInterrupt))
+            self.assertFalse(progress.active())
+            self.assertIsNone(display.worker)
+
+    def test_progress_real_tty_animates_and_releases_terminal_on_every_exit(self):
+        for error in (None, RuntimeError('fixture'), KeyboardInterrupt()):
+            master, slave = pty.openpty()
+            try:
+                with os.fdopen(os.dup(slave), 'w', buffering=1) as output, patch.dict(os.environ, {'TERM': 'xterm', 'NO_COLOR': '1'}):
+                    try:
+                        with progress.Progress(output) as display:
+                            progress.stage('files', 'Restoring your files', 'Downloading the saved filesystem')
+                            deadline = time.monotonic() + 2
+                            while display.frame < 3 and time.monotonic() < deadline:
+                                time.sleep(0.02)
+                            self.assertGreaterEqual(display.frame, 3, 'spinner stopped while preparation waited')
+                            progress.stage('tools', 'Checking your tools')
+                            progress.note('Branch: example\x1b[31m\nlabel')
+                            if error is not None:
+                                raise error
+                    except (RuntimeError, KeyboardInterrupt):
+                        pass
+                    self.assertFalse(progress.active())
+                    self.assertFalse(display.worker.is_alive())
+                    output.write('TERMINAL-HANDOFF\n')
+                    output.flush()
+                chunks = []
+                while select.select([master], [], [], 0.1)[0]:
+                    try:
+                        chunk = os.read(master, 65536)
+                        if not chunk: break
+                        chunks.append(chunk)
+                    except OSError:
+                        break
+                text = b''.join(chunks).decode()
+                self.assertGreaterEqual(text.count('\r\x1b[2K'), 3)
+                self.assertNotIn('\x1b[31m', text, 'account/project label injected terminal control')
+                self.assertNotIn('\x1b[36m', text, 'NO_COLOR ignored')
+                self.assertEqual('Workspace prepared' in text, error is None)
+                self.assertTrue(text.rstrip().endswith('TERMINAL-HANDOFF'), 'display wrote after terminal handoff')
+            finally:
+                os.close(master)
+                if slave is not None: os.close(slave)
+
     def test_forwarded_ssh_endpoint_and_invalid_endpoint(self):
         self.assertEqual(c.ssh_destination({'sshEndpoint': '127.0.0.1:2200'}), ('127.0.0.1', 2200))
         self.assertEqual(c.ssh_destination({'ip': '127.0.0.1'}), ('127.0.0.1', 22))

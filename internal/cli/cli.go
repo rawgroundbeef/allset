@@ -35,8 +35,8 @@ type App struct {
 
 const help = `AllSet — open your remote project and choose your agent.
 
-  allset                            Set up this project if needed, then open it
-  allset init                       Create .allset from this repository
+  allset                            Review setup if needed; otherwise open this project
+  allset init                       Review project configuration without opening
   allset dashboard                    Open/resume a registered project
   allset .                         Explicit form of bare allset
   allset mcp list [PROJECT]         Show this project's MCP declarations
@@ -70,9 +70,10 @@ No terminal setting belongs in project config. No client takeover.
 Projects/status/doctor and dry-run accept --json. Doctor exits 2 for incomplete
 checks, 1 for failures. --config PATH must precede the command.
 
-Without .allset, interactive open starts project setup and reuses saved bindings.
-An unfamiliar project asks for its name and compute provider. Read-only commands
-and dry-run never create configuration. allset init runs configuration setup only.
+Without .allset, interactive open reviews project setup and returns without opening.
+Choose terminal guidance, a prompt for your coding agent, or cancel. Saved bindings
+are shown for review. Run allset again to open; allset init reopens setup anytime.
+Read-only commands and dry-run never create configuration.
 
 Box is the first compute backend. Its current workspace strategy delegates setup
 and sign-ins to the bundled controller; Python remains required for that adapter.
@@ -361,15 +362,15 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.fail(err)
 	}
 	p, err := a.resolve(ctx, f, name)
-	initialized := false
 	if (err == nil || errors.Is(err, config.ErrUnregistered)) && name == "." && operation == "open" && !dry && !*asJSON && a.Interactive {
 		location, locationErr := a.location()
 		if locationErr != nil {
 			return a.fail(locationErr)
 		}
 		if location.ManifestPath == "" {
-			p, err = a.initialize(ctx, f, nil)
-			initialized = err == nil
+			// A first-run setup is the same configuration-only operation as
+			// explicit init. It must never fall through into a VM lifecycle plan.
+			return a.initCommand(ctx, nil)
 		}
 	}
 	if err != nil {
@@ -380,9 +381,6 @@ func (a App) Run(ctx context.Context, args []string) int {
 		return a.fail(err)
 	}
 	if err := backend.Validate(p); err != nil {
-		if initialized {
-			fmt.Fprintln(a.Err, "Project config saved; environment setup is still incomplete. No VM was created.")
-		}
 		return a.fail(err)
 	}
 	switch operation {

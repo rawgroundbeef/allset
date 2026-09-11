@@ -18,7 +18,7 @@ import (
 // Explicit allowlist: adding private JSON or operational notes beside these
 // sources must never cause them to be embedded in a distributable executable.
 //
-//go:embed runtime/box-herdr.py runtime/projects.py runtime/project_shell.py runtime/profiles.py
+//go:embed runtime/progress.py runtime/box-herdr.py runtime/projects.py runtime/project_shell.py runtime/profiles.py
 //go:embed runtime/agent_auth.py runtime/agent_credentials.py runtime/github_auth.py runtime/infisical_context.py
 //go:embed runtime/repository_access.py runtime/worker.py runtime/bootstrap.sh runtime/prepare.sh
 //go:embed runtime/app-runtime.py runtime/service-exec.py runtime/preview-gateway.mjs runtime/preview-tunnel.py

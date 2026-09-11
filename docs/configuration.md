@@ -32,15 +32,20 @@ or invalid file never falls back to some other saved project.
 `allset.schema.json`.
 
 Without a file, bare interactive `allset` starts the guided configuration flow.
-It materializes an existing repository registration without asking again or
-changing account bindings. For an unfamiliar repository it explains shared and
+It shows an existing repository registration for review before saving it,
+without changing account bindings. For an unfamiliar repository it explains shared and
 private settings, infers the origin, asks for a name and compute service, and
-saves a strict project config. It then continues opening the environment.
+saves a strict project config. Setup then returns without creating, resuming,
+or connecting to a VM. Run `allset` again to open the environment.
 Named shortcuts and noninteractive use of saved registrations do not write a
-repository file. `allset init` runs configuration setup without opening.
+repository file. `allset init` reopens the review even when `.allset` exists;
+keeping that configuration leaves the file unchanged. Noninteractive init
+requires `--yes`.
 
-Any coding agent can use `allset config guide` to help with this walkthrough;
-the user chooses the agent. New native provider setup
+The review offers terminal setup, a copyable prompt for the user's preferred
+coding agent, or cancellation. The agent prompt asks it to run `allset config
+guide`, inspect the repository and bindings, and discuss supported settings.
+Selecting this handoff changes no files and starts no agent or VM. New native provider setup
 is not implemented yet, so a missing local Box profile is reported as incomplete
 and no VM is provisioned. Dry runs and read-only commands never run this flow.
 

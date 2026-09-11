@@ -3,9 +3,11 @@ import json
 import os
 from pathlib import Path
 import pty
+import select
 import shutil
 import subprocess
 import tarfile
+import time
 
 home = Path('/home/user')
 assert os.getuid() == 10001 and Path.home() == home
@@ -45,6 +47,34 @@ def cli(*args, ok=True, contains=None, cwd=None, terminal=False, answers=None):
     if contains:
         assert contains in output, (args, output[-3000:])
     return output
+
+
+def cli_tty(*args):
+    """Read a real terminal throughout execution, including the final redraw."""
+    master, slave = pty.openpty()
+    process = None
+    output = bytearray()
+    try:
+        process = subprocess.Popen(['allset', *args], stdin=slave, stdout=slave, stderr=slave,
+                                   env={**os.environ, 'TERM': 'xterm-256color'})
+        deadline = time.monotonic() + 45
+        while time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                output.extend(os.read(master, 65536))
+            elif process.poll() is not None:
+                break
+        else:
+            raise AssertionError('TTY preparation timed out')
+        text = output.decode()
+        assert process.returncode == 0, text[-3000:]
+        assert 'synthetic-access' not in text and 'synthetic-refresh' not in text
+        return text
+    finally:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        os.close(master)
+        os.close(slave)
 
 
 for target in (home / '.ascii/bin/box', home / 'test-tools/ssh', home / 'test-tools/scp',
@@ -105,7 +135,7 @@ unfamiliar = home / 'unfamiliar'
 unfamiliar.mkdir()
 subprocess.run(['git', 'init', '--quiet', str(unfamiliar)], check=True)
 subprocess.run(['git', '-C', str(unfamiliar), 'remote', 'add', 'origin', 'https://github.com/example/unfamiliar.git'], check=True)
-output = cli(cwd=unfamiliar, terminal=True, answers='\n\n', ok=False, contains='environment setup is still incomplete')
+output = cli(cwd=unfamiliar, terminal=True, answers='1\n\n\n', ok=False, contains='environment setup is incomplete')
 assert 'allset config guide' in output and '1/2 Project name' in output
 assert json.loads((unfamiliar / '.allset').read_text())['name'] == 'unfamiliar'
 assert not cache.exists() and not calls()
@@ -113,15 +143,25 @@ print('PASS: unfamiliar repo enters the walkthrough; missing account/provider se
 
 assert not (checkout / '.allset').exists()
 before_registry = (home / '.config/allset/config.json').read_bytes()
-cli('--attach', 'none', cwd=checkout, terminal=True, contains='Project prepared: dashboard.')
+for answer in ('2\n', '3\n'):
+    cli(cwd=checkout, terminal=True, answers=answer, ok=answer.startswith('2'), contains='left unchanged')
+    assert not (checkout / '.allset').exists() and not cache.exists() and not calls()
+cli('--attach', 'none', cwd=checkout, terminal=True, answers='1\n', contains='Run allset to open it')
+assert not cache.exists() and not calls(), 'First setup opened an environment'
+assert not (home / '.codex/auth.json').exists(), 'First setup touched an agent login'
 manifest = json.loads((checkout / '.allset').read_text())
 assert manifest['name'] == 'dashboard' and manifest['repository'] == 'example/dashboard'
 assert manifest['mcps']['docs']['url'] == 'https://docs.example.test/mcp'
 before_manifest = (checkout / '.allset').read_bytes()
-assert 'Project setup:' not in cli('--attach', 'none', cwd=checkout, terminal=True)
+cli('init', cwd=checkout, terminal=True, answers='2\n', contains='preferred coding agent')
+assert not cache.exists() and not calls(), 'Replaying setup ran the controller'
+output = cli('--attach', 'none', cwd=checkout, terminal=True, contains='Workspace prepared')
+assert 'Project setup:' not in output and '\x1b' not in output
+assert 'Preparing your project' in output and 'Preparing your MCP settings' in output
+assert 'changed_files' not in output, 'Startup dumped raw MCP protocol output'
 assert (checkout / '.allset').read_bytes() == before_manifest
 assert (home / '.config/allset/config.json').read_bytes() == before_registry
-print('PASS: bare allset creates a missing project config once and opens the saved environment', flush=True)
+print('PASS: setup reviews/cancels/hands off without touching a VM; a separate run opens with concise phases', flush=True)
 assert cache.is_dir() and not (state / 'controller').exists()
 assert json.loads((home / '.codex/auth.json').read_text()) == json.loads(source.read_text())
 assert 'fixture-model' in (home / '.codex/config.toml').read_text()
@@ -130,10 +170,19 @@ assert (home / '.codex/auth.json').stat().st_mode & 0o077 == 0
 assert not any(c['tool'] == 'herdr' for c in calls())
 print('PASS: bundled preparation, synthetic login restore and native MCP projection', flush=True)
 
+tty_output = cli_tty('connect', 'dashboard', '--attach', 'none')
+assert '\r\x1b[2K' in tty_output and 'Workspace prepared' in tty_output
+assert 'Preparing your MCP settings' in tty_output and 'saved login' in tty_output
+assert 'changed_files' not in tty_output
+assert tty_output.rstrip().endswith('Connect: allset connect dashboard')
+print('PASS: packaged startup animates in a terminal and stops before its final handoff', flush=True)
+
 # Poison the old path after the first run: it must never become an import source.
 write(state / 'controller/projects.py', "raise RuntimeError('PRIVATE CONTROLLER EXECUTED')\n")
 cli('connect', 'dashboard', '--attach', 'workspace', contains='Herdr workspace ready: dashboard.')
-cli('connect', 'dashboard', '--attach', 'workspace', contains='"changed_files": 0')
+mcp_before = (home / '.codex/config.toml').read_bytes()
+cli('connect', 'dashboard', '--attach', 'workspace', contains='Herdr workspace ready: dashboard.')
+assert (home / '.codex/config.toml').read_bytes() == mcp_before
 assert sum(c['operation'] == 'workspace-create' for c in calls()) == 1
 assert sum(c['operation'] == 'machine-add' for c in calls()) == 1
 assert (checkout / 'uncommitted.txt').read_text() == 'work survives\n'

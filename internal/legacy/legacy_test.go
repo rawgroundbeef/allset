@@ -128,6 +128,7 @@ func TestOpenBridgeUsesNativeViewAndNeverTakesOver(t *testing.T) {
 	for _, attach := range []string{"none", "ssh", "herdr", "terminal", "workspace"} {
 		t.Run(attach, func(t *testing.T) {
 			root := t.TempDir()
+			installProgressFixture(t, root)
 			put(t, root, "profiles/dashboard/shell.json", map[string]string{"task_id": "shell-dashboard"})
 			files := map[string]string{
 				"projects.py": `import os,sys,contextlib
@@ -186,6 +187,8 @@ def run(argv,env,stdin,capture_output,text,timeout):
  assert env['HERDR_CONFIG_PATH']=='/caller/herdr.toml'
  return Result()
 def call(argv, env):
+ import progress,threading
+ assert not progress.active() and not any(t.name=="allset-progress" for t in threading.enumerate())
  assert (env.get('ALLSET_TEST_NATIVE_VIEW')=='yes')==(os.environ['FAKE_MODE']=='herdr')
  assert '--takeover' not in argv
  if argv[0]=='ssh':
@@ -321,5 +324,16 @@ func TestMCPApplyIsIncludedOnOpenAndConnect(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(plan.Args, " "), `"mcps":{}`) {
 		t.Fatal("explicit empty MCP declaration lost")
+	}
+}
+
+func installProgressFixture(t *testing.T, root string) {
+	t.Helper()
+	source, err := os.ReadFile("../controller/runtime/progress.py")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "progress.py"), source, 0600); err != nil {
+		t.Fatal(err)
 	}
 }

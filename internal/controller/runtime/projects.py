@@ -22,6 +22,7 @@ from profiles import validate, credential, check_token
 import agent_auth
 import github_auth
 import infisical_context
+import progress
 
 ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location('controller', ROOT / 'box-herdr.py')
@@ -88,7 +89,7 @@ def stage_auth(meta, profile):
 
 def request_resume(meta, profile, ttl):
     """Reconcile a timed-out native resume with Box state without submitting a second resume."""
-    print('Resuming saved Box ' + meta['machine_id'] + '...', flush=True)
+    progress.stage('machine', 'Waking up your machine', 'Resuming the saved environment')
     try:
         c.box('resume', meta['machine_id'], '--ttl', str(ttl), '--environment', profile['box_environment'])
     except subprocess.TimeoutExpired:
@@ -99,7 +100,7 @@ def request_resume(meta, profile, ttl):
                                '. The saved machine has not been replaced.') from None
         meta.update(box_state=info['state'], phase='resuming', ttl_seconds=ttl)
         c.save(meta)
-        print('Box accepted the resume and is still starting. Waiting for the same machine...', flush=True)
+        progress.stage('machine', 'Waking up your machine', 'Resume accepted; waiting for it to start')
 
 
 def restored_filesystem_ready(state):
@@ -118,8 +119,7 @@ def restore_progress(state, elapsed):
     fetched = state.get('bytes_fetched')
     if type(fetched) is int and fetched >= 0:
         details.append(str(fetched // (1024 * 1024)) + ' MiB downloaded')
-    return ('Box is restoring files (' + ', '.join(details) +
-            '); the project will open when restoration finishes.')
+    return ' · '.join(details)
 
 
 def wait_project_filesystem(meta, timeout=900):
@@ -139,18 +139,19 @@ print(json.dumps({'filesystem':mounts['filesystems'][0]['fstype'],
  'phase':data.get('phase'),'restore_error':bool(data.get('error')),
  'bytes_fetched':data.get('bytesFetched')}))
 '''
+    progress.stage('files', 'Checking your saved files')
     started = time.monotonic()
     deadline = started + timeout
     announced = False
     while True:
         state = json.loads(c.remote(meta, shlex.join(['sudo', 'python3', '-c', probe]), timeout=20))
         if restored_filesystem_ready(state):
-            if announced: print('Box filesystem restoration complete.', flush=True)
+            if announced: progress.stage('files', 'Restoring your files', 'Restoration complete')
             return
         if time.monotonic() >= deadline:
             raise RuntimeError('Box is still restoring its filesystem. No project process was started; retry box ' +
                                meta['project'] + ' when restoration finishes. Its auto-stop deadline is unchanged.')
-        print(restore_progress(state, time.monotonic() - started), flush=True)
+        progress.stage('files', 'Restoring your files', restore_progress(state, time.monotonic() - started))
         announced = True
         time.sleep(min(30, max(0, deadline - time.monotonic())))
 
@@ -158,6 +159,7 @@ print(json.dumps({'filesystem':mounts['filesystems'][0]['fstype'],
 def ensure_project(profile, ttl, *, prepare_apps=True, reconcile_agents=True, prepare_sessions=True):
     """Reuse the project Box; shell access needs neither app credentials nor an agent login."""
     name = profile['name']
+    progress.stage('machine', 'Checking your machine')
     record = PROJECTS / name / 'machine.json'
     if record.exists():
         meta = machine(name)
@@ -174,25 +176,26 @@ def ensure_project(profile, ttl, *, prepare_apps=True, reconcile_agents=True, pr
                 'phase': 'creating', 'remote_state': '/home/user/.box-herdr/projects/' + name}
         c.save(meta)
         try:
+            progress.stage('machine', 'Starting your machine', 'Creating the project environment')
             c.create(meta, ttl, profile['template'], profile['box_environment'])
         finally:
             if meta.get('machine_id'):
                 atomic(record, {'task_id': meta['task_id'], 'machine_id': meta['machine_id']})
-    print('Connecting to ' + name + ' over SSH...', flush=True)
     c.refresh_ssh(meta)
     wait_project_filesystem(meta)
-    print('SSH connected. Checking remote tooling...', flush=True)
+    progress.stage('tools', 'Checking your tools', 'Preparing the remote environment')
     c.write_remote(meta, '/home/user/.boxignore', c.PROJECT_IGNORES)
     c.write_remote(meta, meta['remote_state'] + '/bootstrap.sh', (ROOT / 'bootstrap.sh').read_text())
     bootstrap = ['bash', meta['remote_state'] + '/bootstrap.sh']
     if prepare_sessions: bootstrap.append('--with-herdr')
     c.remote(meta, shlex.join(['bash', '-lc', shlex.join(bootstrap)]), timeout=300)
+    progress.stage('accounts', 'Preparing your project accounts')
     infisical_context.configure(c, meta, profile)
     if prepare_apps: stage_auth(meta, profile)
     agent_auth.restore(c, meta, profile)
     github_auth.stage(c, meta, profile)
     if prepare_sessions:
-        print('Connecting ' + name + ' to Herdr...', flush=True)
+        progress.stage('sessions', 'Reconnecting Herdr', 'Checking the existing session')
         status = c.remote(meta, '/home/user/.local/bin/herdr --session agents status')
         if 'status: not running' in status:
             if c.remote(meta, 'pgrep -u user -x herdr || true').strip():
@@ -201,7 +204,6 @@ def ensure_project(profile, ttl, *, prepare_apps=True, reconcile_agents=True, pr
         else:
             c.register(meta)
     meta['phase'] = 'running'; c.save(meta)
-    if prepare_sessions: print('Herdr connected.', flush=True)
     # A restored ID can name a different pane; recover ownership from the native
     # conversation reference and task cwd before sending any terminal command.
     for task in tasks(name):
@@ -467,16 +469,17 @@ def open_project(name, *, ttl=7200, create_terminal=True, prepare_sessions=True)
     if create_terminal and not prepare_sessions:
         raise ValueError('A Herdr terminal requires explicit session preparation')
     profile = project(name)
+    progress.stage('machine', 'Checking your machine', 'Waiting for project access')
     with project_lock(name):
-        print('Opening ' + name + '...', flush=True)
         owner = ensure_project(profile, ttl, prepare_apps=False, reconcile_agents=False, prepare_sessions=prepare_sessions)
         if create_terminal:
             label = name + ' / terminal'
             workspaces = c.rh(owner, 'workspace', 'list')['workspaces']
             if not any(w.get('label') == label for w in workspaces):
                 c.rh(owner, 'workspace', 'create', '--cwd', '/home/user', '--label', label, '--no-focus')
-        if prepare_sessions: show(owner)
-        if prepare_sessions: print('SSH: ssh ' + owner['ssh_alias'], flush=True)
+        if prepare_sessions and not progress.active():
+            show(owner)
+            print('SSH: ssh ' + owner['ssh_alias'], flush=True)
         return owner
 
 
